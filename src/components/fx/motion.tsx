@@ -155,10 +155,12 @@ export function TiltCard({
   children,
   className,
   tilt = 8,
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
   tilt?: number;
+  onClick?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const px = useMotionValue(0.5);
@@ -170,6 +172,7 @@ export function TiltCard({
   return (
     <motion.div
       ref={ref}
+      onClick={onClick}
       className={cn(
         "group relative rounded-2xl glass p-6 transition-shadow duration-500 hover:shadow-[var(--shadow-float)]",
         className,

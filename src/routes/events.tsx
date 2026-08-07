@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlowButton, Panel, StatCard } from "@/components/ui-kit";
 import { getAllEvents, registerEventInStore, unregisterEventInStore, type CampusEvent } from "@/lib/events-store";
+import { getStudent } from "@/lib/student-store";
 import { CalendarPlus, Check, Users } from "lucide-react";
 import { Reveal, TiltCard } from "@/components/fx/motion";
 
@@ -22,21 +23,28 @@ export const Route = createFileRoute("/events")({
 
 function Events() {
   const [eventList, setEventList] = useState<CampusEvent[]>(() => getAllEvents());
-  const [actionLogs, setActionLogs] = useState<string[]>([
-    "events.register(student=22B81A05xx, event='Placement Prep Bootcamp')",
+  const [student, setStudent] = useState(() => getStudent());
+
+  const studentId = student.rollNumber || student.name || "Student";
+
+  const [actionLogs, setActionLogs] = useState<string[]>(() => [
+    `events.register(student=${getStudent().rollNumber || getStudent().name || "Student"}, event='Placement Prep Bootcamp')`,
     "calendar.create_event(title='Placement Prep Bootcamp', at='2026-08-21T10:00')",
     "notification.schedule(offset=-60m, channel=push+email)",
   ]);
 
   const refreshEvents = () => {
     setEventList(getAllEvents());
+    setStudent(getStudent());
   };
 
   useEffect(() => {
     refreshEvents();
     window.addEventListener("campusx_events_updated", refreshEvents);
+    window.addEventListener("campusx_profile_updated", refreshEvents);
     return () => {
       window.removeEventListener("campusx_events_updated", refreshEvents);
+      window.removeEventListener("campusx_profile_updated", refreshEvents);
     };
   }, []);
 
@@ -44,13 +52,13 @@ function Events() {
     if (currentlyRegistered) {
       unregisterEventInStore(title);
       setActionLogs((logs) => [
-        `events.unregister(student=22B81A05xx, event='${title}')`,
+        `events.unregister(student=${studentId}, event='${title}')`,
         ...logs,
       ]);
     } else {
       registerEventInStore(title, date);
       setActionLogs((logs) => [
-        `events.register(student=22B81A05xx, event='${title}')`,
+        `events.register(student=${studentId}, event='${title}')`,
         `calendar.create_event(title='${title}', at='${date}')`,
         `notification.schedule(offset=-60m, channel=push+email)`,
         ...logs,

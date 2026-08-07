@@ -103,12 +103,12 @@ export const courses = [
 ];
 
 export const documents = [
-  { title: "Academic Regulations R22", type: "Handbook", chunks: 412, updated: "Jul 28, 2026" },
-  { title: "Placement Policy 2026", type: "Policy", chunks: 168, updated: "Aug 02, 2026" },
-  { title: "Hostel Code of Conduct", type: "Circular", chunks: 96, updated: "Jun 14, 2026" },
-  { title: "Scholarship Guidelines", type: "Notice", chunks: 74, updated: "Jul 09, 2026" },
-  { title: "Examination Manual", type: "Handbook", chunks: 302, updated: "Aug 05, 2026" },
-  { title: "Library Services FAQ", type: "FAQ", chunks: 58, updated: "May 30, 2026" },
+  { title: "Academic Regulations R22", type: "Handbook", category: "institutional", description: "VCE academic regulations, attendance criteria & grading system.", author: "Academic Audit Cell, VCE", chunks: 4, updated: "Aug 07, 2026" },
+  { title: "Placement & Training Cell Policy 2026", type: "Policy", category: "institutional", description: "Campus recruitment guidelines & eligibility.", author: "Training & Placement Cell, VCE", chunks: 3, updated: "Aug 07, 2026" },
+  { title: "Hostel Code of Conduct & Rules", type: "Circular", category: "institutional", description: "Curfew timings, mess schedule & entry rules.", author: "Chief Warden, VCE", chunks: 2, updated: "Aug 07, 2026" },
+  { title: "Scholarship & Fee Concession Manual", type: "Notice", category: "institutional", description: "ePASS and VCE management merit awards.", author: "Admin Office, VCE", chunks: 2, updated: "Aug 07, 2026" },
+  { title: "Introduction to Algorithms (CLRS)", type: "Book", category: "book", description: "Standard textbook for Algorithms & Dynamic Programming.", author: "Cormen, Leiserson, Rivest, Stein", chunks: 2, updated: "Aug 07, 2026" },
+  { title: "Operating System Concepts", type: "Book", category: "book", description: "Textbook for Processes, Deadlocks & Paging.", author: "Silberschatz, Galvin, Gagne", chunks: 2, updated: "Aug 07, 2026" },
 ];
 
 export const notifications = [

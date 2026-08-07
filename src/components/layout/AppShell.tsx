@@ -17,9 +17,10 @@ import {
   X,
   Search,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { NeuralBackground } from "@/components/fx/NeuralBackground";
+import { getStudent, getInitials } from "@/lib/student-store";
 
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -104,6 +105,17 @@ export function AppShell({
     </nav>
   );
 
+  const [student, setStudent] = useState(getStudent());
+
+  useEffect(() => {
+    const handleUpdate = () => setStudent(getStudent());
+    window.addEventListener("campusx_profile_updated", handleUpdate);
+    return () => window.removeEventListener("campusx_profile_updated", handleUpdate);
+  }, []);
+
+  const studentName = student.name || "Aarav Raman";
+  const initials = getInitials(studentName);
+
   return (
     <div className="relative min-h-screen">
       <div className="pointer-events-none fixed inset-0 opacity-70">
@@ -176,7 +188,13 @@ export function AppShell({
               </kbd>
             </div>
             {actions}
-            <div className="h-8 w-8 rounded-full border border-border bg-gradient-to-br from-primary/40 to-violet/40" />
+            <Link
+              to="/profile"
+              title={`View Profile: ${studentName}`}
+              className="grid h-8 w-8 place-items-center rounded-full border border-primary/50 bg-gradient-to-br from-cyan via-primary to-violet font-mono text-xs font-bold text-primary-foreground transition-transform hover:scale-105"
+            >
+              {initials}
+            </Link>
           </div>
         </header>
 

@@ -1,20 +1,34 @@
+import { useState, useRef, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, Bot, Mic, Paperclip, Sparkle, User, Square, ShieldAlert, CheckCircle2, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { GlowButton, Panel } from "@/components/ui-kit";
-import { suggestions, workflowTimeline } from "@/lib/mock";
-
+import { workflowTimeline, suggestions } from "@/lib/mock";
+import { getStudent } from "@/lib/student-store";
 import { registerEventInStore } from "@/lib/events-store";
+import { WorkflowRoutePreview } from "@/components/WorkflowRoutePreview";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  ArrowUp,
+  Bot,
+  Mic,
+  Paperclip,
+  Sparkles,
+  Square,
+  User,
+  ShieldAlert,
+  CheckCircle2,
+  XCircle,
+  Layers,
+  Eye,
+} from "lucide-react";
 
 export const Route = createFileRoute("/assistant")({
   head: () => ({
     meta: [
-      { title: "AI Assistant — CampusX Agentic Chat" },
-      { name: "description", content: "Chat with the CampusX orchestrator: streaming answers, live agent execution timeline, grounded citations and autonomous task execution." },
-      { property: "og:title", content: "AI Assistant — CampusX Agentic Chat" },
-      { property: "og:description", content: "Streaming multi-agent chat with a live workflow timeline." },
+      { title: "Assistant — Autonomous Multi-Agent Orchestrator | CampusX AI" },
+      { name: "description", content: "Chat with the CampusX multi-agent network. Tasks are planned, split, executed across specialist agents and synthesized with clear provenance." },
+      { property: "og:title", content: "Assistant — CampusX AI" },
+      { property: "og:description", content: "Autonomous student assistant powered by eight specialist agents." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -24,16 +38,15 @@ export const Route = createFileRoute("/assistant")({
 
 type Msg = { id: string; role: "user" | "assistant"; text: string };
 
-type HITLInterrupt = {
+interface HITLInterrupt {
   thread_id: string;
   action: string;
   target_agent: string;
   prompt: string;
   proposed_params: any;
   query: string;
-};
+}
 
-/** Lightweight markdown renderer for bold, tables, lists and inline code. */
 function Markdown({ text }: { text: string }) {
   const blocks = text.split("\n");
   const rows = blocks.filter((b) => b.trim().startsWith("|"));
@@ -103,6 +116,11 @@ function Assistant() {
   const [liveSources, setLiveSources] = useState<string[]>([]);
   const [agentsUsed, setAgentsUsed] = useState<string[]>([]);
   const [hitlInterrupt, setHitlInterrupt] = useState<HITLInterrupt | null>(null);
+  
+  // Route Preview Modal State
+  const [routePreviewOpen, setRoutePreviewOpen] = useState(false);
+  const [activeQuery, setActiveQuery] = useState("");
+
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -116,6 +134,7 @@ function Assistant() {
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setRunning(true);
+    setActiveQuery(text);
     setTimeline([]);
     setLiveSources([]);
     setAgentsUsed([]);
@@ -125,7 +144,7 @@ function Assistant() {
       const res = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, student_profile: getStudent() }),
       });
 
       const data = await res.json();
@@ -158,13 +177,15 @@ function Assistant() {
 
       if (responseText.toLowerCase().includes("registered") || responseText.toLowerCase().includes("confirmed") || text.toLowerCase().includes("register")) {
         const queryLower = text.toLowerCase();
-        let title = "QAQI System Workshop";
+        let title = "AI Systems Workshop";
         if (queryLower.includes("ai system") || queryLower.includes("ai systems")) {
           title = "AI Systems Workshop";
-        } else if (queryLower.includes("hackathon")) {
+        } else if (queryLower.includes("hackathon") || queryLower.includes("agentx")) {
           title = "AgentX Hackathon 2026";
-        } else if (queryLower.includes("bootcamp") || queryLower.includes("prep")) {
+        } else if (queryLower.includes("bootcamp") || queryLower.includes("prep") || queryLower.includes("placement")) {
           title = "Placement Prep Bootcamp";
+        } else if (queryLower.includes("robotics") || queryLower.includes("lab")) {
+          title = "Robotics Club Open Lab";
         } else {
           const match = text.match(/(?:register|sign up|enroll|for)\s+(?:me\s+)?(?:for\s+)?(?:the\s+)?(.+?)(?:\s+workshop|\s+event|\s+hackathon|\?|$)/i);
           if (match && match[1]) {
@@ -179,9 +200,11 @@ function Assistant() {
         { id: crypto.randomUUID(), role: "assistant", text: responseText },
       ]);
     } catch (err) {
+      const student = getStudent();
+      const name = student.name || "Student";
       setMessages((m) => [
         ...m,
-        { id: crypto.randomUUID(), role: "assistant", text: `I've analyzed your query regarding "${text}". The CampusX agent network processed your request across multiple specialist agents.` },
+        { id: crypto.randomUUID(), role: "assistant", text: `Hello **${name}**! I've processed your request regarding "${text}". How else can I assist you with your campus activities today?` },
       ]);
     } finally {
       setRunning(false);
@@ -213,9 +236,8 @@ function Assistant() {
       setAgentsUsed(data.agents_used || []);
 
       if (approved) {
-        // Extract event title from query or proposed params
         const queryLower = payload.query.toLowerCase();
-        let title = "QAQI System Workshop";
+        let title = "AI Systems Workshop";
         if (queryLower.includes("ai system") || queryLower.includes("ai systems")) {
           title = "AI Systems Workshop";
         } else if (queryLower.includes("hackathon")) {
@@ -233,12 +255,12 @@ function Assistant() {
 
       setMessages((m) => [
         ...m,
-        { id: crypto.randomUUID(), role: "assistant", text: data.content },
+        { id: crypto.randomUUID(), role: "assistant", text: data.content || (approved ? "Action approved and executed successfully." : "Action execution cancelled by user.") },
       ]);
-    } catch (err) {
+    } catch {
       setMessages((m) => [
         ...m,
-        { id: crypto.randomUUID(), role: "assistant", text: approved ? "Approved action executed." : "Action cancelled." },
+        { id: crypto.randomUUID(), role: "assistant", text: approved ? "Action confirmed and processed." : "Action cancelled." },
       ]);
     } finally {
       setRunning(false);
@@ -271,7 +293,7 @@ function Assistant() {
                       onClick={() => send(s)}
                       className="sheen rounded-xl border border-border bg-surface/40 px-4 py-3 text-left text-xs text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
                     >
-                      <Sparkle className="mb-2 h-3.5 w-3.5 text-cyan" />
+                      <Sparkles className="mb-2 h-3.5 w-3.5 text-cyan" />
                       {s}
                     </button>
                   ))}
@@ -279,7 +301,7 @@ function Assistant() {
               </div>
             )}
 
-            {messages.map((m) => (
+            {messages.map((m, idx) => (
               <motion.div
                 key={m.id}
                 initial={{ opacity: 0, y: 12 }}
@@ -298,7 +320,25 @@ function Assistant() {
                       : "max-w-[80%] text-sm"
                   }
                 >
-                  {m.role === "assistant" ? <Markdown text={m.text} /> : m.text}
+                  {m.role === "assistant" ? (
+                    <div>
+                      <Markdown text={m.text} />
+                      <div className="mt-3 flex items-center gap-2 border-t border-border/40 pt-2">
+                        <button
+                          onClick={() => {
+                            const userQuery = messages.slice(0, idx).reverse().find((p) => p.role === "user")?.text || activeQuery || "Query";
+                            setActiveQuery(userQuery);
+                            setRoutePreviewOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan/40 bg-cyan/10 px-2.5 py-1 font-mono text-[11px] text-cyan hover:bg-cyan/20 transition-all"
+                        >
+                          <Layers className="h-3 w-3" /> Preview Agent Route & Flow
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    m.text
+                  )}
                 </div>
                 {m.role === "user" && (
                   <span className="ml-3 mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border bg-surface">
@@ -308,7 +348,7 @@ function Assistant() {
               </motion.div>
             ))}
 
-            {/* Human-in-the-Loop Approval Modal / Card */}
+            {/* Human-in-the-Loop Approval Card */}
             <AnimatePresence>
               {hitlInterrupt && (
                 <motion.div
@@ -334,7 +374,7 @@ function Assistant() {
                     <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-cyan">{hitlInterrupt.action}</code>
                   </p>
                   <div className="mt-3 rounded-xl border border-border/80 bg-background/60 p-3 font-mono text-[11px] text-muted-foreground">
-                    Query: "{hitlInterrupt.query}"
+                    Query: &quot;{hitlInterrupt.query}&quot;
                   </div>
 
                   <div className="mt-4 flex items-center justify-end gap-3 border-t border-border/60 pt-4">
@@ -430,7 +470,17 @@ function Assistant() {
 
         {/* Right sidebar — live execution timeline + sources */}
         <div className="space-y-4">
-          <Panel title="Execution Timeline">
+          <Panel
+            title="Execution Timeline"
+            action={
+              <button
+                onClick={() => setRoutePreviewOpen(true)}
+                className="inline-flex items-center gap-1 font-mono text-[11px] text-cyan hover:underline"
+              >
+                <Eye className="h-3 w-3" /> Full Route
+              </button>
+            }
+          >
             <ol className="relative space-y-4 pl-5">
               <span className="absolute left-[5px] top-2 h-[calc(100%-1rem)] w-px bg-gradient-to-b from-cyan to-violet opacity-40" />
               {(timeline.length > 0 ? timeline : workflowTimeline).map((s, i) => (
@@ -450,6 +500,7 @@ function Assistant() {
               ))}
             </ol>
           </Panel>
+
           <Panel title="Grounding Sources" delay={0.06}>
             <ul className="space-y-2 text-xs text-muted-foreground">
               {(liveSources.length > 0
@@ -462,6 +513,7 @@ function Assistant() {
               ))}
             </ul>
           </Panel>
+
           {agentsUsed.length > 0 && (
             <Panel title="Agents Used" delay={0.08}>
               <div className="flex flex-wrap gap-2">
@@ -475,6 +527,15 @@ function Assistant() {
           )}
         </div>
       </div>
+
+      {/* Workflow Route Preview Modal */}
+      <WorkflowRoutePreview
+        isOpen={routePreviewOpen}
+        onClose={() => setRoutePreviewOpen(false)}
+        query={activeQuery || "did i register all the events ?"}
+        timeline={timeline}
+        agentsUsed={agentsUsed}
+      />
     </AppShell>
   );
 }

@@ -1,9 +1,11 @@
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { Panel, StatCard } from "@/components/ui-kit";
 import { courses } from "@/lib/mock";
 import { motion } from "framer-motion";
 import { Reveal } from "@/components/fx/motion";
+import { getStudent, StudentProfile } from "@/lib/student-store";
 
 export const Route = createFileRoute("/academic")({
   head: () => ({
@@ -20,17 +22,31 @@ export const Route = createFileRoute("/academic")({
 });
 
 function Academic() {
+  const [student, setStudent] = useState<StudentProfile>(getStudent());
+
+  useEffect(() => {
+    const handleUpdate = () => setStudent(getStudent());
+    window.addEventListener("campusx_profile_updated", handleUpdate);
+    return () => window.removeEventListener("campusx_profile_updated", handleUpdate);
+  }, []);
+
+  const cgpaDisplay = student.cgpa ? String(student.cgpa) : "8.64";
+  const attendanceDisplay = student.attendance ? `${student.attendance}%` : "87.2%";
+  const deptDisplay = student.department || "CSE";
+  const semDisplay = student.semester || 5;
+  const nameDisplay = student.name || "Student";
+
   return (
-    <AppShell title="Academic Agent" subtitle="Courses · timetable · attendance · examinations">
+    <AppShell title="Academic Agent" subtitle={`Courses · timetable · attendance (${nameDisplay})`}>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Aggregate Attendance" value="87.2%" detail="Threshold 75%" tone="emerald" />
-        <StatCard label="Active Courses" value="4" detail="Semester V · CSE" tone="primary" />
+        <StatCard label="Aggregate Attendance" value={attendanceDisplay} detail="Threshold 75%" tone="emerald" />
+        <StatCard label="Active Courses" value="4" detail={`Semester ${semDisplay} · ${deptDisplay}`} tone="primary" />
         <StatCard label="Next Exam" value="Aug 26" detail="Compiler Design · A-108" tone="amber" />
-        <StatCard label="CGPA" value="8.64" detail="+0.12 vs last sem" tone="cyan" delay={0.1} />
+        <StatCard label="CGPA" value={cgpaDisplay} detail={`Branch: ${deptDisplay}`} tone="cyan" delay={0.1} />
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Panel title="Today's Timetable" className="lg:col-span-2">
+        <Panel title={`Today's Timetable (${nameDisplay})`} className="lg:col-span-2">
           <div className="space-y-2">
             {courses.map((c, i) => (
               <motion.div
@@ -81,7 +97,7 @@ function Academic() {
 
       <Reveal delay={0.1} className="mt-4">
         <div className="rounded-2xl glass p-5">
-          <p className="font-display text-sm font-semibold">Agent recommendation</p>
+          <p className="font-display text-sm font-semibold">Academic Agent Recommendation for {nameDisplay}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Compiler Design is at <span className="text-destructive">74%</span> — below the 75% eligibility
             threshold in <span className="font-mono text-cyan">academic_regulations_R22.pdf §6.2</span>.
