@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { AgentNetwork } from "@/components/AgentNetwork";
 import { Panel, StatusDot } from "@/components/ui-kit";
 import { Counter, Reveal, TiltCard } from "@/components/fx/motion";
 import { agents, STATUS_LABEL } from "@/lib/mock";
+import { fetchApi } from "@/lib/api";
 import { Bot } from "lucide-react";
 
 export const Route = createFileRoute("/agents")({
@@ -23,12 +25,22 @@ export const Route = createFileRoute("/agents")({
 const STATES = Object.values(STATUS_LABEL);
 
 function Agents() {
+  const [liveAgents, setLiveAgents] = useState(agents);
+
+  useEffect(() => {
+    fetchApi<any[]>("/agents").then((data) => {
+      if (Array.isArray(data) && data.length > 0) {
+        setLiveAgents(data);
+      }
+    });
+  }, []);
+
   return (
     <AppShell title="Agent Network" subtitle="Live orchestration topology and specialist health">
       <AgentNetwork />
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {agents.map((a, i) => (
+        {liveAgents.map((a, i) => (
           <Reveal key={a.id} delay={i * 0.04}>
             <TiltCard className="h-full">
               <div className="flex items-start justify-between">
@@ -40,7 +52,7 @@ function Agents() {
               <p className="mt-4 font-display text-sm font-semibold">{a.name}</p>
               <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{a.desc}</p>
               <p className="mt-3 font-mono text-[10px] uppercase tracking-[0.18em] text-cyan">
-                {STATES[i % STATES.length]}
+                {a.status || STATES[i % STATES.length]}
               </p>
               <div className="mt-4 flex items-center justify-between border-t border-border pt-3 font-mono text-[10px] text-muted-foreground">
                 <span>

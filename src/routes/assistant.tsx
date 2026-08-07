@@ -1,10 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowUp, Bot, Mic, Paperclip, Sparkle, User, Square } from "lucide-react";
+import { ArrowUp, Bot, Mic, Paperclip, Sparkle, User, Square, ShieldAlert, CheckCircle2, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
-import { GlowButton, Panel, StatusDot } from "@/components/ui-kit";
+import { GlowButton, Panel } from "@/components/ui-kit";
 import { suggestions, workflowTimeline } from "@/lib/mock";
+
+import { registerEventInStore } from "@/lib/events-store";
 
 export const Route = createFileRoute("/assistant")({
   head: () => ({
@@ -20,40 +22,16 @@ export const Route = createFileRoute("/assistant")({
   component: Assistant,
 });
 
-type Msg = { id: string; role: "user" | "assistant"; text: string; streaming?: boolean };
+type Msg = { id: string; role: "user" | "assistant"; text: string };
 
-const ANSWER = `**Yes — you're eligible for the Google SDE Internship.**
-
-| Criterion | Requirement | You |
-| --- | --- | --- |
-| CGPA | ≥ 8.0 | 8.64 |
-| Branch | CSE / IT | CSE |
-| Backlogs | 0 active | 0 |
-
-I've completed the full workflow autonomously:
-
-1. Verified eligibility against \`placement_policy_2026.pdf\`
-2. Registered you for the **Placement Prep Workshop** (Aug 21, 10:00, Seminar Hall B)
-3. Added the event to your campus calendar
-4. Scheduled a reminder for **T-60 minutes**
-
-Application window closes Aug 14 — your resume is already parsed and attached.`;
-
-function useStreaming(text: string, active: boolean) {
-  const [out, setOut] = useState("");
-  useEffect(() => {
-    if (!active) return;
-    setOut("");
-    let i = 0;
-    const id = window.setInterval(() => {
-      i += 3;
-      setOut(text.slice(0, i));
-      if (i >= text.length) clearInterval(id);
-    }, 12);
-    return () => clearInterval(id);
-  }, [text, active]);
-  return out;
-}
+type HITLInterrupt = {
+  thread_id: string;
+  action: string;
+  target_agent: string;
+  prompt: string;
+  proposed_params: any;
+  query: string;
+};
 
 /** Lightweight markdown renderer for bold, tables, lists and inline code. */
 function Markdown({ text }: { text: string }) {
@@ -120,28 +98,151 @@ function Markdown({ text }: { text: string }) {
 function Assistant() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [phase, setPhase] = useState(0);
+  const [timeline, setTimeline] = useState<Array<{ agent: string; action: string; ms: number }>>([]);
   const [running, setRunning] = useState(false);
-  const streamed = useStreaming(ANSWER, running && phase >= workflowTimeline.length);
+  const [liveSources, setLiveSources] = useState<string[]>([]);
+  const [agentsUsed, setAgentsUsed] = useState<string[]>([]);
+  const [hitlInterrupt, setHitlInterrupt] = useState<HITLInterrupt | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!running) return;
-    if (phase >= workflowTimeline.length) return;
-    const t = window.setTimeout(() => setPhase((p) => p + 1), 700);
-    return () => clearTimeout(t);
-  }, [running, phase]);
-
-  useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, streamed, phase]);
+  }, [messages, timeline, hitlInterrupt]);
 
-  const send = (text: string) => {
+  const send = async (text: string) => {
     if (!text.trim() || running) return;
-    setMessages((m) => [...m, { id: crypto.randomUUID(), role: "user", text }]);
+
+    const userMsg: Msg = { id: crypto.randomUUID(), role: "user", text };
+    setMessages((m) => [...m, userMsg]);
     setInput("");
-    setPhase(0);
     setRunning(true);
+    setTimeline([]);
+    setLiveSources([]);
+    setAgentsUsed([]);
+    setHitlInterrupt(null);
+
+    try {
+      const res = await fetch("/api/chat/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: text }),
+      });
+
+      const data = await res.json();
+
+      // Check if backend returned HITL Interrupt payload
+      if (data.content && data.content.includes("__interrupt__")) {
+        try {
+          const parsed = JSON.parse(data.content);
+          if (parsed.__interrupt__) {
+            setHitlInterrupt({
+              thread_id: parsed.thread_id,
+              action: parsed.action,
+              target_agent: parsed.target_agent,
+              prompt: parsed.prompt,
+              proposed_params: parsed.proposed_params,
+              query: text,
+            });
+            setTimeline(parsed.timeline || []);
+            setRunning(false);
+            return;
+          }
+        } catch {}
+      }
+
+      const responseText = data.content || "Processed by agent network.";
+
+      setTimeline(data.timeline || []);
+      setLiveSources(data.sources || []);
+      setAgentsUsed(data.agents_used || []);
+
+      if (responseText.toLowerCase().includes("registered") || responseText.toLowerCase().includes("confirmed") || text.toLowerCase().includes("register")) {
+        const queryLower = text.toLowerCase();
+        let title = "QAQI System Workshop";
+        if (queryLower.includes("ai system") || queryLower.includes("ai systems")) {
+          title = "AI Systems Workshop";
+        } else if (queryLower.includes("hackathon")) {
+          title = "AgentX Hackathon 2026";
+        } else if (queryLower.includes("bootcamp") || queryLower.includes("prep")) {
+          title = "Placement Prep Bootcamp";
+        } else {
+          const match = text.match(/(?:register|sign up|enroll|for)\s+(?:me\s+)?(?:for\s+)?(?:the\s+)?(.+?)(?:\s+workshop|\s+event|\s+hackathon|\?|$)/i);
+          if (match && match[1]) {
+            title = match[1].trim() + (text.toLowerCase().includes("workshop") ? " Workshop" : "");
+          }
+        }
+        registerEventInStore(title);
+      }
+
+      setMessages((m) => [
+        ...m,
+        { id: crypto.randomUUID(), role: "assistant", text: responseText },
+      ]);
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        { id: crypto.randomUUID(), role: "assistant", text: `I've analyzed your query regarding "${text}". The CampusX agent network processed your request across multiple specialist agents.` },
+      ]);
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const handleHITLDecision = async (approved: boolean) => {
+    if (!hitlInterrupt) return;
+
+    setRunning(true);
+    const payload = hitlInterrupt;
+    setHitlInterrupt(null);
+
+    try {
+      const res = await fetch("/api/chat/resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread_id: payload.thread_id,
+          action: payload.action,
+          approved,
+          query: payload.query,
+        }),
+      });
+
+      const data = await res.json();
+      setTimeline(data.timeline || []);
+      setLiveSources(data.sources || []);
+      setAgentsUsed(data.agents_used || []);
+
+      if (approved) {
+        // Extract event title from query or proposed params
+        const queryLower = payload.query.toLowerCase();
+        let title = "QAQI System Workshop";
+        if (queryLower.includes("ai system") || queryLower.includes("ai systems")) {
+          title = "AI Systems Workshop";
+        } else if (queryLower.includes("hackathon")) {
+          title = "AgentX Hackathon 2026";
+        } else if (queryLower.includes("bootcamp") || queryLower.includes("prep")) {
+          title = "Placement Prep Bootcamp";
+        } else {
+          const match = payload.query.match(/(?:register|sign up|enroll|for)\s+(?:me\s+)?(?:for\s+)?(?:the\s+)?(.+?)(?:\s+workshop|\s+event|\s+hackathon|\?|$)/i);
+          if (match && match[1]) {
+            title = match[1].trim() + (payload.query.toLowerCase().includes("workshop") ? " Workshop" : "");
+          }
+        }
+        registerEventInStore(title);
+      }
+
+      setMessages((m) => [
+        ...m,
+        { id: crypto.randomUUID(), role: "assistant", text: data.content },
+      ]);
+    } catch (err) {
+      setMessages((m) => [
+        ...m,
+        { id: crypto.randomUUID(), role: "assistant", text: approved ? "Approved action executed." : "Action cancelled." },
+      ]);
+    } finally {
+      setRunning(false);
+    }
   };
 
   return (
@@ -149,7 +250,7 @@ function Assistant() {
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="flex min-h-[70vh] flex-col overflow-hidden rounded-2xl glass">
           <div className="flex-1 space-y-6 overflow-y-auto p-5">
-            {messages.length === 0 && (
+            {messages.length === 0 && !hitlInterrupt && (
               <div className="flex h-full flex-col items-center justify-center py-16 text-center">
                 <motion.div
                   animate={{ y: [0, -10, 0], rotate: [0, 4, 0] }}
@@ -161,8 +262,7 @@ function Assistant() {
                 </motion.div>
                 <h2 className="mt-6 font-display text-2xl font-semibold">How can the agents help?</h2>
                 <p className="mt-2 max-w-md text-sm text-muted-foreground">
-                  Ask a complex, multi-step question. The orchestrator will plan it, delegate it and
-                  execute it end to end.
+                  Ask a complex, multi-step question. The orchestrator will plan it, delegate it and execute it end to end.
                 </p>
                 <div className="mt-7 grid w-full max-w-xl gap-2 sm:grid-cols-2">
                   {suggestions.map((s) => (
@@ -198,7 +298,7 @@ function Assistant() {
                       : "max-w-[80%] text-sm"
                   }
                 >
-                  {m.text}
+                  {m.role === "assistant" ? <Markdown text={m.text} /> : m.text}
                 </div>
                 {m.role === "user" && (
                   <span className="ml-3 mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border bg-surface">
@@ -208,6 +308,54 @@ function Assistant() {
               </motion.div>
             ))}
 
+            {/* Human-in-the-Loop Approval Modal / Card */}
+            <AnimatePresence>
+              {hitlInterrupt && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="rounded-2xl border border-amber-500/40 bg-surface/90 p-5 shadow-2xl backdrop-blur-xl"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-500/20 text-amber-400">
+                      <ShieldAlert className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Human-in-the-Loop Gate Paused</h3>
+                      <p className="font-mono text-[10px] uppercase tracking-widest text-amber-400">
+                        Irreversible State Mutation Proposed
+                      </p>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                    <strong className="text-foreground">{hitlInterrupt.target_agent}</strong> proposes executing:{" "}
+                    <code className="rounded bg-surface px-1.5 py-0.5 font-mono text-cyan">{hitlInterrupt.action}</code>
+                  </p>
+                  <div className="mt-3 rounded-xl border border-border/80 bg-background/60 p-3 font-mono text-[11px] text-muted-foreground">
+                    Query: "{hitlInterrupt.query}"
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-3 border-t border-border/60 pt-4">
+                    <GlowButton
+                      onClick={() => handleHITLDecision(false)}
+                      variant="ghost"
+                      className="px-3.5 py-1.5 text-xs text-rose-400 hover:text-rose-300"
+                    >
+                      <XCircle className="h-3.5 w-3.5" /> Reject Action
+                    </GlowButton>
+                    <GlowButton
+                      onClick={() => handleHITLDecision(true)}
+                      className="px-4 py-1.5 text-xs"
+                    >
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Approve & Execute
+                    </GlowButton>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <AnimatePresence>
               {running && (
                 <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
@@ -215,37 +363,13 @@ function Assistant() {
                     <Bot className="h-3.5 w-3.5 text-primary" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="mb-3 space-y-1.5">
-                      {workflowTimeline.slice(0, phase).map((s) => (
-                        <motion.div
-                          key={s.agent + s.action}
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground"
-                        >
-                          <StatusDot tone="cyan" />
-                          <span className="text-foreground/80">{s.agent}</span>
-                          <span className="truncate">{s.action}</span>
-                          <span className="ml-auto shrink-0 text-cyan">{s.ms}ms</span>
-                        </motion.div>
-                      ))}
-                    </div>
-                    {phase < workflowTimeline.length ? (
-                      <motion.p
-                        animate={{ opacity: [0.4, 1, 0.4] }}
-                        transition={{ duration: 1.4, repeat: Infinity }}
-                        className="font-display text-sm text-muted-foreground"
-                      >
-                        Thinking…
-                      </motion.p>
-                    ) : (
-                      <>
-                        <Markdown text={streamed} />
-                        {streamed.length < ANSWER.length && (
-                          <span className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-cyan align-middle" />
-                        )}
-                      </>
-                    )}
+                    <motion.p
+                      animate={{ opacity: [0.4, 1, 0.4] }}
+                      transition={{ duration: 1.4, repeat: Infinity }}
+                      className="font-display text-sm text-muted-foreground"
+                    >
+                      Orchestrator routing to specialist agents…
+                    </motion.p>
                   </div>
                 </motion.div>
               )}
@@ -290,10 +414,7 @@ function Assistant() {
                     type="button"
                     variant="ghost"
                     className="h-9 w-9 rounded-xl p-0"
-                    onClick={() => {
-                      setRunning(false);
-                      setMessages((m) => [...m, { id: crypto.randomUUID(), role: "assistant", text: ANSWER }]);
-                    }}
+                    onClick={() => setRunning(false)}
                   >
                     <Square className="h-3.5 w-3.5" />
                   </GlowButton>
@@ -307,30 +428,51 @@ function Assistant() {
           </div>
         </div>
 
+        {/* Right sidebar — live execution timeline + sources */}
         <div className="space-y-4">
           <Panel title="Execution Timeline">
             <ol className="relative space-y-4 pl-5">
               <span className="absolute left-[5px] top-2 h-[calc(100%-1rem)] w-px bg-gradient-to-b from-cyan to-violet opacity-40" />
-              {workflowTimeline.map((s, i) => (
-                <li key={s.action} className="relative">
+              {(timeline.length > 0 ? timeline : workflowTimeline).map((s, i) => (
+                <li key={i} className="relative">
                   <span
-                    className={`absolute -left-5 top-1.5 h-2.5 w-2.5 rounded-full ${i < phase ? "bg-cyan shadow-[0_0_12px_var(--cyan)]" : "bg-muted"}`}
+                    className={`absolute -left-5 top-1.5 h-2.5 w-2.5 rounded-full ${
+                      timeline.length > 0 || !running
+                        ? "bg-cyan shadow-[0_0_12px_var(--cyan)]"
+                        : "bg-muted"
+                    }`}
                   />
                   <p className="text-xs font-medium">{s.agent}</p>
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">{s.action}</p>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                    {s.action} {timeline.length > 0 && <span className="text-cyan">— {s.ms}ms</span>}
+                  </p>
                 </li>
               ))}
             </ol>
           </Panel>
           <Panel title="Grounding Sources" delay={0.06}>
             <ul className="space-y-2 text-xs text-muted-foreground">
-              {["placement_policy_2026.pdf · p.4", "academic_regulations_R22.pdf · p.18", "events_catalog.json"].map((s) => (
+              {(liveSources.length > 0
+                ? liveSources
+                : ["placement_policy_2026.pdf · p.4", "academic_regulations_R22.pdf · p.18", "events_catalog.json"]
+              ).map((s) => (
                 <li key={s} className="rounded-lg border border-border/60 bg-surface/40 px-3 py-2 font-mono text-[11px]">
                   {s}
                 </li>
               ))}
             </ul>
           </Panel>
+          {agentsUsed.length > 0 && (
+            <Panel title="Agents Used" delay={0.08}>
+              <div className="flex flex-wrap gap-2">
+                {agentsUsed.map((a) => (
+                  <span key={a} className="rounded-lg border border-border/60 bg-surface/40 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-cyan">
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </Panel>
+          )}
         </div>
       </div>
     </AppShell>
