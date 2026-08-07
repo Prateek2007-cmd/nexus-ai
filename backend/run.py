@@ -64,8 +64,7 @@ def main() -> None:
     except Exception:
         pass
 
-    from app.main import app
-    uvicorn.run(app, host=selected_host, port=selected_port)
+    uvicorn.run("app.main:app", host=selected_host, port=selected_port, reload=True)
 
 
 if __name__ == "__main__":

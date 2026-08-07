@@ -27,25 +27,33 @@ class PlacementAgent(BaseAgent):
         action = task.action
         raw_query = task.params.get("query", "")
         query = raw_query.lower()
+        profile = task.params.get("student_profile", {})
+
+        student_cgpa = profile.get("cgpa") if profile.get("cgpa") is not None and profile.get("cgpa") > 0 else 8.64
+        student_name = profile.get("name") or "Student"
+        student_branch = profile.get("department") or "CSE"
+        student_skills = profile.get("skills") or ["Python", "React", "SQL"]
 
         company_name = self._extract_company(raw_query) or "Google"
 
         if action == "check_eligibility" or "eligible" in query or "eligibility" in query or "apply" in query or company_name != "Google":
             min_cgpa = 8.0 if any(c in company_name.lower() for c in ["google", "microsoft", "apple", "meta", "nvidia", "uber"]) else 7.0
-            student_cgpa = 8.64
             is_eligible = student_cgpa >= min_cgpa
 
             return AgentResult(
                 task_id=task.task_id, agent_id=self.agent_id, action="check_eligibility",
                 data={
-                    "summary": f"**Eligibility Status for {company_name}**: {'Eligible ✓' if is_eligible else 'Not Eligible ✗'}. Your CGPA ({student_cgpa}) meets the requirement (≥ {min_cgpa}). Branch: CSE ✓, Backlogs: 0 ✓.",
+                    "summary": f"**Placement Eligibility Report for {student_name}**: {'Eligible ✓' if is_eligible else 'Not Eligible ✗'} for **{company_name}**.\n\n"
+                               f"- **Your CGPA**: `{student_cgpa}` (Cutoff requirement: `≥ {min_cgpa}`)\n"
+                               f"- **Branch**: `{student_branch}` (Eligible: CSE / IT / ECE)\n"
+                               f"- **Active Backlogs**: `0`\n"
+                               f"- **Skills Matched**: {', '.join(student_skills[:4])}",
                     "company": company_name,
                     "eligible": is_eligible,
                     "criteria": [
                         {"criterion": "CGPA Cutoff", "requirement": f"≥ {min_cgpa}", "yours": str(student_cgpa), "met": is_eligible},
-                        {"criterion": "Branch Requirement", "requirement": "CSE / IT / ECE", "yours": "CSE", "met": True},
+                        {"criterion": "Branch Requirement", "requirement": "CSE / IT / ECE", "yours": student_branch, "met": True},
                         {"criterion": "Active Backlogs", "requirement": "0 active", "yours": "0", "met": True},
-                        {"criterion": "Graduation Year", "requirement": "2026 Batch", "yours": "2026", "met": True},
                     ],
                     "drive_details": {
                         "company": company_name,
@@ -63,8 +71,8 @@ class PlacementAgent(BaseAgent):
         return AgentResult(
             task_id=task.task_id, agent_id=self.agent_id, action=action,
             data={
-                "summary": "14 open placement drives on campus. You're auto-eligible for 9 tier-1 drives. Resume score: 88/100. 3 mock interviews completed.",
-                "open_drives": 14, "eligible_for": 9, "resume_score": 88,
+                "summary": f"14 open placement drives on campus for **{student_name}** ({student_branch}). CGPA: **{student_cgpa}**. Resume skills matched: {len(student_skills)}. Eligible for drives meeting CGPA ≤ {student_cgpa}.",
+                "open_drives": 14, "student_cgpa": student_cgpa, "resume_skills": student_skills,
             },
             confidence=0.95,
         )

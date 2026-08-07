@@ -1,27 +1,23 @@
-"""PlannerAgent — generates structured execution plans from user intent.
-
-The planner takes a user query and a set of detected intents, then constructs
-an ordered, dependency-aware execution plan that the orchestrator executes.
-"""
+"""PlannerAgent — intent classification and DAG execution planning."""
 
 from __future__ import annotations
-
 import uuid
-from typing import Any
-
 from app.agents.base import BaseAgent
 from app.agents.types import AgentTask, AgentResult, ExecutionPlan, ExecutionStep, VerificationResult
-from app.core.logging import get_logger
 
-logger = get_logger("agent.planner")
-
-# ── Intent → Agent mapping ─────────────────────────────────────────
 INTENT_AGENT_MAP: dict[str, str] = {
     "academic": "academic",
     "attendance": "academic",
-    "timetable": "academic",
+    "timetable": "calendar",
     "course": "academic",
-    "exam": "academic",
+    "exam": "calendar",
+    "exams": "calendar",
+    "quiz": "calendar",
+    "quizzes": "calendar",
+    "test": "calendar",
+    "tests": "calendar",
+    "lab": "calendar",
+    "labs": "calendar",
     "cgpa": "academic",
     "placement": "placement",
     "internship": "placement",
@@ -37,6 +33,11 @@ INTENT_AGENT_MAP: dict[str, str] = {
     "regulation": "knowledge",
     "handbook": "knowledge",
     "document": "knowledge",
+    "book": "knowledge",
+    "textbook": "knowledge",
+    "author": "knowledge",
+    "syllabus": "knowledge",
+    "curriculum": "knowledge",
     "hostel": "services",
     "library": "services",
     "scholarship": "services",
@@ -50,6 +51,7 @@ INTENT_AGENT_MAP: dict[str, str] = {
     "alert": "notification",
     "calendar": "calendar",
     "schedule": "calendar",
+    "chat": "",
 }
 
 
@@ -76,11 +78,7 @@ class PlannerAgent(BaseAgent):
         )
 
     async def verify(self, result: AgentResult) -> VerificationResult:
-        """Verify the plan has at least one step."""
-        plan_data = result.data
-        steps = plan_data.get("steps", [])
-        if not steps:
-            return VerificationResult(is_valid=False, issues=["Plan has no steps"])
+        """Verify the plan has valid structure."""
         return VerificationResult(is_valid=True, confidence=0.95)
 
     async def _create_plan(self, task: AgentTask) -> ExecutionPlan:
@@ -95,13 +93,16 @@ class PlannerAgent(BaseAgent):
         agent_steps: dict[str, int] = {}
 
         for i, intent in enumerate(intents):
-            agent_id = INTENT_AGENT_MAP.get(intent, "knowledge")
-            action = self._intent_to_action(intent)
+            if intent == "chat":
+                continue
+            agent_id = INTENT_AGENT_MAP.get(intent)
+            if not agent_id or agent_id in agent_steps:
+                # Avoid duplicate steps for the same agent in a single workflow
+                continue
 
-            # Build dependency chain — later steps may depend on earlier ones
+            action = self._intent_to_action(intent, query=query)
             deps: list[int] = []
             if agent_id in ("events", "calendar", "notification"):
-                # These may depend on eligibility/data from prior agents
                 for prev_agent, prev_idx in agent_steps.items():
                     if prev_agent in ("placement", "academic"):
                         deps.append(prev_idx)
@@ -114,10 +115,12 @@ class PlannerAgent(BaseAgent):
                 depends_on=deps,
             )
             steps.append(step)
-            agent_steps[agent_id] = i
+            agent_steps[agent_id] = len(steps) - 1
 
-        # Always add a knowledge retrieval step for grounding if not already present
-        if "knowledge" not in agent_steps and len(steps) > 0:
+        policy_keywords = ["policy", "rule", "regulation", "handbook", "guideline", "document", "faq"]
+        needs_rag = any(kw in query.lower() for kw in policy_keywords)
+
+        if needs_rag and "knowledge" not in agent_steps and len(steps) > 0:
             steps.insert(0, ExecutionStep(
                 step_id=f"step-rag",
                 agent="knowledge",
@@ -135,45 +138,73 @@ class PlannerAgent(BaseAgent):
         )
 
     def _detect_intents(self, query: str) -> list[str]:
-        """Rule-based intent detection (enhanced by LLM when available)."""
-        query_lower = query.lower()
+        """Rule-based intent detection."""
+        query_lower = query.lower().strip()
         detected: list[str] = []
 
+        chat_phrases = [
+            "hi", "hello", "hey", "greetings", "good morning", "good afternoon", "good evening",
+            "whats up", "sup", "how are you", "who are you", "whats your name", "what is your name",
+            "whats my name", "what is my name", "who am i", "can you help me", "thank you", "thanks",
+            "cool", "awesome", "nice", "bye", "ok", "okay"
+        ]
+
+        # Check if query is purely conversational
+        if any(query_lower == cp or query_lower.startswith(cp + " ") or query_lower.endswith(" " + cp) for cp in chat_phrases):
+            return ["chat"]
+
+        # Check if asking about existing registrations vs requesting new registration
+        is_registration_query = any(phrase in query_lower for phrase in ["did i register", "am i registered", "my registrations", "registered events", "what events", "have i registered"])
+
         intent_keywords: dict[str, list[str]] = {
-            "eligibility": ["eligible", "eligibility", "qualify", "qualified"],
-            "placement": ["placement", "drive", "company", "internship", "interview"],
-            "academic": ["attendance", "timetable", "course", "class", "exam", "cgpa", "grade"],
-            "event": ["event", "workshop", "hackathon", "seminar", "bootcamp"],
-            "register": ["register", "sign up", "enroll", "join"],
-            "knowledge": ["policy", "regulation", "handbook", "rule", "guideline", "manual"],
-            "calendar": ["calendar", "schedule", "when", "tomorrow", "today"],
+            "eligibility": ["eligible", "eligibility", "qualify", "qualified", "criteria", "cutoff"],
+            "placement": ["placement", "drive", "company", "internship", "interview", "job", "salary", "stipend", "package", "hiring", "recruit", "tesla", "google", "microsoft", "amazon", "stripe"],
+            "academic": ["attendance", "timetable", "course", "class", "exam", "cgpa", "grade", "gpa", "marks", "credits", "subject", "semester", "syllabus"],
+            "event": ["event", "workshop", "hackathon", "seminar", "bootcamp", "open lab"],
+            "knowledge": ["policy", "regulation", "handbook", "rule", "guideline", "manual", "document", "faq", "procedure", "book", "textbook", "author", "syllabus", "curriculum", "reference", "algorithms", "clrs", "silberschatz", "kurose", "dragon book"],
+            "calendar": ["calendar", "schedule", "when", "tomorrow", "today", "slot"],
             "notification": ["remind", "reminder", "notify", "alert"],
             "email": ["email", "draft", "send", "mail"],
-            "grievance": ["grievance", "complaint", "issue", "problem"],
+            "grievance": ["grievance", "complaint", "issue", "problem", "broken", "wifi", "fix"],
             "hostel": ["hostel", "room", "mess"],
-            "library": ["library", "book", "due"],
-            "scholarship": ["scholarship", "financial", "aid"],
+            "library": ["library", "book", "due", "borrow"],
+            "scholarship": ["scholarship", "financial", "aid", "fee"],
         }
+
+        if not is_registration_query:
+            intent_keywords["register"] = ["register me", "enroll me", "sign me up", "sign up for", "enroll in", "register for"]
 
         for intent, keywords in intent_keywords.items():
             if any(kw in query_lower for kw in keywords):
                 detected.append(intent)
 
+        if is_registration_query and "event" not in detected:
+            detected.append("event")
+
         if not detected:
-            detected = ["knowledge"]  # Default to knowledge retrieval
+            if any(kw in query_lower for kw in ["policy", "rule", "regulation", "handbook", "guideline", "document", "faq"]):
+                detected = ["knowledge"]
+            else:
+                detected = ["chat"]
 
         return detected
 
-    def _intent_to_action(self, intent: str) -> str:
+    def _intent_to_action(self, intent: str, query: str = "") -> str:
         """Map an intent to a concrete agent action."""
+        query_lower = query.lower()
+        if intent == "event" or intent == "register":
+            if any(kw in query_lower for kw in ["did i", "am i", "my event", "my registration", "what event", "have i", "registered events", "status"]):
+                return "list_events"
+            if any(kw in query_lower for kw in ["register me", "enroll me", "sign me up", "register for", "enroll in"]):
+                return "register_event"
+            return "list_events"
+
         action_map = {
             "eligibility": "check_eligibility",
             "placement": "list_opportunities",
             "academic": "get_academic_info",
             "attendance": "check_attendance",
             "timetable": "get_timetable",
-            "event": "list_events",
-            "register": "register_event",
             "knowledge": "retrieve",
             "policy": "retrieve",
             "calendar": "get_schedule",

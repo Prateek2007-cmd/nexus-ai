@@ -48,6 +48,20 @@ async def get_db() -> AsyncSession:  # type: ignore[misc]
 
 
 async def init_db() -> None:
-    """Create all tables from metadata. Idempotent."""
+    """Create all tables from metadata. Recreates stale tables if schema changed."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        def check_schema(sync_conn):
+            from sqlalchemy import inspect
+            inspector = inspect(sync_conn)
+            existing = inspector.get_table_names()
+
+            # If documents table exists but is missing the 'category' column, drop & recreate
+            if "documents" in existing:
+                columns = [c["name"] for c in inspector.get_columns("documents")]
+                if "category" not in columns:
+                    Base.metadata.drop_all(sync_conn)
+
+            # create_all is idempotent — creates any missing tables (e.g. calendar_blocks)
+            Base.metadata.create_all(sync_conn)
+
+        await conn.run_sync(check_schema)

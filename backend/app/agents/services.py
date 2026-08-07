@@ -19,17 +19,23 @@ class StudentServicesAgent(BaseAgent):
 
     async def execute(self, task: AgentTask) -> AgentResult:
         query = task.params.get("query", "").lower()
+        profile = task.params.get("student_profile", {})
+        cgpa = profile.get("cgpa") if profile.get("cgpa") is not None and profile.get("cgpa") > 0 else 8.0
+        name = profile.get("name") or "Student"
+        hostel = profile.get("hostel") or "Hostel Block C · Room 214"
+
         if "library" in query or "book" in query:
             return AgentResult(task_id=task.task_id, agent_id=self.agent_id, action=task.action,
-                data={"summary": "2 books issued. 'Introduction to Algorithms' due in 2 days. No fines pending.", "books_issued": 2, "due_soon": 1}, confidence=0.97)
+                data={"summary": f"Library status for **{name}**: 2 books issued. 'Introduction to Algorithms' due in 2 days. No fines pending.", "books_issued": 2, "due_soon": 1}, confidence=0.97)
         if "hostel" in query:
             return AgentResult(task_id=task.task_id, agent_id=self.agent_id, action=task.action,
-                data={"summary": "Room B-214, Mess Plan A. No dues. Hostel code of conduct available in knowledge base.", "room": "B-214", "dues": "Cleared"}, confidence=0.98)
+                data={"summary": f"Hostel records for **{name}**: {hostel}, Mess Plan A. No dues pending.", "room": hostel, "dues": "Cleared"}, confidence=0.98)
         if "scholarship" in query:
+            is_elig = cgpa >= 8.0
             return AgentResult(task_id=task.task_id, agent_id=self.agent_id, action=task.action,
-                data={"summary": "Merit scholarship application is open. Closes Aug 30. You meet the CGPA requirement (8.64 ≥ 8.0).", "eligible": True}, confidence=0.95)
+                data={"summary": f"Merit Scholarship Application status for **{name}**: Application open until Aug 30. Your CGPA (`{cgpa}`) {'meets' if is_elig else 'does not meet'} the requirement (≥ 8.0).", "eligible": is_elig, "cgpa": cgpa}, confidence=0.95)
         return AgentResult(task_id=task.task_id, agent_id=self.agent_id, action=task.action,
-            data={"summary": "All student services operational. 0 open tickets. Library: 2 books issued. Hostel dues: cleared. 1 scholarship application open."}, confidence=0.94)
+            data={"summary": f"Student services status for **{name}**: 0 open tickets. Library: 2 books issued. Hostel ({hostel}): cleared. Scholarship status verified."}, confidence=0.94)
 
     async def verify(self, result: AgentResult) -> VerificationResult:
         return VerificationResult(is_valid=True, confidence=0.97)

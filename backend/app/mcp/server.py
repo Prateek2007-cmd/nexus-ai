@@ -37,7 +37,7 @@ def _get_timetable(student_id: str = "22B81A05xx") -> dict:
         ],
     }
 
-def _check_placement_eligibility(company: str = "Google", cgpa: float = 8.64) -> dict:
+def _check_placement_eligibility(company: str = "Google", cgpa: float = 8.0) -> dict:
     min_cgpa = 8.0 if company.lower() in ["google", "microsoft", "apple", "meta", "nvidia"] else 7.0
     return {
         "company": company,

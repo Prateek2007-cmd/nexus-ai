@@ -24,6 +24,7 @@ router = APIRouter()
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str | None = None
+    student_profile: dict[str, Any] | None = None
 
 
 class ChatResponse(BaseModel):
@@ -39,16 +40,7 @@ class ChatResponse(BaseModel):
 
 @router.post("/send", response_model=ChatResponse)
 async def send_message(body: ChatRequest) -> ChatResponse:
-    """Send a message and get the orchestrated multi-agent response.
-
-    This endpoint:
-    1. Receives the user query
-    2. Routes it to the OrchestratorAgent
-    3. Orchestrator invokes PlannerAgent for intent detection + DAG planning
-    4. Specialist agents (Academic, Placement, Events, Knowledge, etc.) execute in parallel
-    5. Groq Llama-3.3-70B synthesizes a grounded response from agent data
-    6. Returns the synthesized response with sources, timeline, and confidence
-    """
+    """Send a message and get the orchestrated multi-agent response."""
     start = time.monotonic()
     user_id = "demo-user-001"
 
@@ -60,6 +52,7 @@ async def send_message(body: ChatRequest) -> ChatResponse:
             query=body.message,
             user_id=user_id,
             conversation_id=body.conversation_id,
+            student_profile=body.student_profile,
         )
 
         elapsed_ms = round((time.monotonic() - start) * 1000)

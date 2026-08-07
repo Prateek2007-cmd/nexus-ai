@@ -27,12 +27,39 @@ class AcademicAgent(BaseAgent):
     async def execute(self, task: AgentTask) -> AgentResult:
         action = task.action
         query = task.params.get("query", "").lower()
+        profile = task.params.get("student_profile", {})
+
+        cgpa = profile.get("cgpa") if profile.get("cgpa") is not None and profile.get("cgpa") > 0 else 8.64
+        name = profile.get("name") or "Student"
+        roll = profile.get("rollNumber") or "22B81A05xx"
+        sem = profile.get("semester") or 6
+        dept = profile.get("department") or "Computer Science & Engineering"
+        att = profile.get("attendance") if profile.get("attendance") is not None and profile.get("attendance") > 0 else 87.2
+
+        if "cgpa" in query or "gpa" in query or "grade" in query or "marks" in query:
+            return AgentResult(
+                task_id=task.task_id, agent_id=self.agent_id, action="check_cgpa",
+                data={
+                    "summary": f"Academic Record for **{name}** (`{roll}`):\n\n"
+                               f"- **Cumulative Grade Point Average (CGPA)**: `{cgpa} / 10.0`\n"
+                               f"- **Current Semester**: Semester {sem} ({dept})\n"
+                               f"- **Aggregate Attendance**: `{att}%`\n"
+                               f"- **Active Backlogs**: `0`",
+                    "cgpa": cgpa,
+                    "sgpa": round(min(10.0, cgpa + 0.12), 2),
+                    "semester": sem,
+                    "backlogs": 0,
+                    "branch": dept,
+                    "status": "First Class with Distinction" if cgpa >= 8.0 else "First Class",
+                },
+                confidence=0.99, sources=[f"academic_transcript_{roll}.pdf"],
+            )
 
         if action == "check_attendance" or "attendance" in query:
             return AgentResult(
                 task_id=task.task_id, agent_id=self.agent_id, action=action,
                 data={
-                    "summary": "Your aggregate attendance is **87.2%** (above 75% threshold). Compiler Design is at 74% — attend next 3 sessions to restore eligibility per `academic_regulations_R22.pdf §6.2`.",
+                    "summary": f"Attendance breakdown for **{name}**: Aggregate is **{att}%** ({'Above 75% threshold' if att >= 75 else 'Below threshold'}). Compiler Design is at 74% — attend next 3 sessions to restore eligibility per `academic_regulations_R22.pdf §6.2`.",
                     "courses": [
                         {"code": "CS502", "name": "Distributed Systems", "attendance": 92},
                         {"code": "CS514", "name": "Machine Learning", "attendance": 87},
@@ -48,7 +75,7 @@ class AcademicAgent(BaseAgent):
             return AgentResult(
                 task_id=task.task_id, agent_id=self.agent_id, action=action,
                 data={
-                    "summary": "Today's schedule: Distributed Systems (09:00, B-204), Machine Learning (10:10, B-301), Compiler Design (11:20, A-108), Agentic AI Systems (14:00, AI Lab).",
+                    "summary": f"Today's schedule for **{name}** ({dept} Sem {sem}): Distributed Systems (09:00, B-204), Machine Learning (10:10, B-301), Compiler Design (11:20, A-108), Agentic AI Systems (14:00, AI Lab).",
                     "schedule": [
                         {"slot": "09:00 — 10:00", "course": "Distributed Systems", "room": "B-204"},
                         {"slot": "10:10 — 11:10", "course": "Machine Learning", "room": "B-301"},
@@ -59,12 +86,12 @@ class AcademicAgent(BaseAgent):
                 confidence=0.98,
             )
 
-        # Default
+        # Default academic overview
         return AgentResult(
             task_id=task.task_id, agent_id=self.agent_id, action=action,
             data={
-                "summary": "CGPA: 8.64 (+0.12 vs last semester). 4 active courses in Semester V CSE. Next exam: Compiler Design on Aug 26 in A-108.",
-                "cgpa": 8.64, "semester": 5, "active_courses": 4,
+                "summary": f"Academic Summary for **{name}**: CGPA: **{cgpa}**. 4 active courses in Semester {sem} ({dept}). Next exam: Compiler Design on Aug 26 in A-108.",
+                "cgpa": cgpa, "semester": sem, "active_courses": 4,
             },
             confidence=0.95,
         )

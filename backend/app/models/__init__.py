@@ -9,3 +9,4 @@ from app.models.event import Event, Registration  # noqa: F401
 from app.models.knowledge import Document, Chunk  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.memory import AgentMemory, UserPreference  # noqa: F401
+from app.models.calendar import CalendarBlock  # noqa: F401

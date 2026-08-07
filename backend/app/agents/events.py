@@ -35,65 +35,63 @@ class EventsAgent(BaseAgent):
         action = task.action
         raw_query = task.params.get("query", "")
         query = raw_query.lower()
+        profile = task.params.get("student_profile", {})
 
-        # Clean title extraction from query
+        student_name = profile.get("name") or "Student"
+        student_roll = profile.get("rollNumber") or "ID"
+        registered_events = profile.get("registeredEvents") or ["AI Systems Workshop", "Placement Prep Bootcamp"]
+
         event_name = self._extract_event_name(raw_query)
 
-        # Check registration intent
-        if action == "register_event" or "register" in query or "enroll" in query or "sign up" in query:
-            target_title = event_name or "Placement Prep Bootcamp"
+        # 1. Status query intent (e.g. "did i register all the events?", "what events am i registered for?")
+        is_query_intent = any(kw in query for kw in ["did i", "am i", "have i", "registered", "my event", "my registration", "all the event", "which event"])
+
+        if is_query_intent or action != "register_event":
+            registered_lower = [e.lower() for e in registered_events]
+            catalog_titles = [e["title"] for e in DEFAULT_EVENTS]
+            unregistered = [e for e in catalog_titles if e.lower() not in registered_lower]
+
+            if len(registered_events) >= len(catalog_titles) or not unregistered:
+                reg_list_str = ", ".join([f"**{ev}**" for ev in registered_events])
+                summary = f"Yes **{student_name}** (`{student_roll}`)! You are registered for **all {len(registered_events)} campus events**: {reg_list_str}."
+            else:
+                confirmed_str = ", ".join([f"**{ev}**" for ev in registered_events])
+                remaining_str = ", ".join([f"**{u}**" for u in unregistered])
+                summary = (
+                    f"**{student_name}** (`{student_roll}`), you are currently registered for **{len(registered_events)} out of {len(catalog_titles)}** campus events.\n\n"
+                    f"- ✅ **Confirmed Registrations**: {confirmed_str}\n"
+                    f"- ⏳ **Unregistered Events**: {remaining_str}"
+                )
+
             return AgentResult(
-                task_id=task.task_id, agent_id=self.agent_id, action="register_event",
+                task_id=task.task_id, agent_id=self.agent_id, action="list_events",
                 data={
-                    "summary": f"Registered student '22B81A05xx' for **{target_title}**. Seat confirmed. Synced to campus calendar with T-60m notification.",
-                    "event": {
-                        "title": target_title,
-                        "date": "Aug 21, 2026",
-                        "time": "10:00 AM",
-                        "venue": "Seminar Hall B",
-                        "status": "Confirmed",
-                    },
-                    "registration_id": f"REG-{abs(hash(target_title)) % 8999 + 1000}",
-                    "confirmed": True,
+                    "summary": summary,
+                    "registered_events": registered_events,
+                    "unregistered_events": unregistered,
+                    "count": len(registered_events),
+                    "total_catalog": len(catalog_titles),
                 },
                 confidence=0.99, tool_calls=1,
             )
 
-        # Search existing events catalog
-        matched_events = [
-            e for e in DEFAULT_EVENTS
-            if any(word in e["title"].lower() or word in e["tag"].lower() or word in e["details"].lower()
-                   for word in query.split() if len(word) > 2)
-        ]
-
-        # If query asks about a specific custom event not in default list, dynamically generate it!
-        if not matched_events and event_name:
-            matched_events = [{
-                "title": event_name,
-                "org": "Dept. of Computer Science & Engineering",
-                "date": "Aug 25, 2026",
-                "time": "10:00 AM - 4:00 PM",
-                "seats": 35,
-                "tag": "Workshop",
-                "venue": "Tech Seminar Hall 2",
-                "details": f"Specialized session on {event_name} including hands-on labs, domain expert talks, and certificate of completion.",
-            }]
-
-        all_events = matched_events if matched_events else DEFAULT_EVENTS
-
-        event_summaries = [
-            f"{e['title']} ({e['org']}, {e['date']}, {e['seats']} seats available, Venue: {e.get('venue', 'Campus Hall')}) - {e.get('details', '')}"
-            for e in all_events
-        ]
-
+        # 2. Explicit registration intent
+        target_title = event_name or "Placement Prep Bootcamp"
         return AgentResult(
-            task_id=task.task_id, agent_id=self.agent_id, action="list_events",
+            task_id=task.task_id, agent_id=self.agent_id, action="register_event",
             data={
-                "summary": f"Found {len(all_events)} relevant campus events: " + " | ".join(event_summaries),
-                "events": all_events,
-                "queried_event": event_name,
+                "summary": f"Registered **{student_name}** (`{student_roll}`) for **{target_title}**. Seat confirmed. Synced to campus calendar with T-60m notification.",
+                "event": {
+                    "title": target_title,
+                    "date": "Aug 21, 2026",
+                    "time": "10:00 AM",
+                    "venue": "Seminar Hall B",
+                    "status": "Confirmed",
+                },
+                "registration_id": f"REG-{abs(hash(target_title)) % 8999 + 1000}",
+                "confirmed": True,
             },
-            confidence=0.98, tool_calls=1,
+            confidence=0.99, tool_calls=1,
         )
 
     async def verify(self, result: AgentResult) -> VerificationResult:
@@ -112,9 +110,5 @@ class EventsAgent(BaseAgent):
             match = re.search(p, query, re.IGNORECASE)
             if match:
                 extracted = match.group(1).strip("? .!").title()
-                # Clean prompt artifacts
-                for word in ["Workshop", "Hackathon", "Bootcamp", "Seminar", "Event"]:
-                    if word.lower() in extracted.lower() and not extracted.endswith(word):
-                        pass
                 return extracted
         return ""
