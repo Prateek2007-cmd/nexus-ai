@@ -92,30 +92,9 @@ async def seed_if_empty() -> None:
         if not has_docs:
             # ── Documents & Chunks (Vasavi College of Engineering Corpus) ──────
             from app.db.vce_knowledge_data import VCE_DOCUMENTS
-            from app.models.knowledge import Chunk
 
             for doc_info in VCE_DOCUMENTS:
-                doc = Document(
-                    title=doc_info["title"],
-                    doc_type=doc_info["doc_type"],
-                    category=doc_info.get("category", "institutional"),
-                    description=doc_info.get("description", ""),
-                    author=doc_info.get("author", "Vasavi College of Engineering"),
-                    total_chunks=len(doc_info["chunks"]),
-                )
-                session.add(doc)
-                await session.flush()
-
-                for idx, chk in enumerate(doc_info["chunks"]):
-                    chunk_obj = Chunk(
-                        document_id=doc.id,
-                        chunk_index=idx + 1,
-                        content=chk["text"],
-                        page_number=chk.get("page", 1),
-                        char_count=len(chk["text"]),
-                        tags=chk.get("tags", ""),
-                    )
-                    session.add(chunk_obj)
+                await _insert_document(session, doc_info)
 
         if not has_user:
             # ── Notifications (matches mock.ts) ────────────────────────
@@ -146,3 +125,67 @@ async def seed_if_empty() -> None:
 
         await session.commit()
         logger.info("seed_completed")
+
+
+async def _insert_document(session, doc_info: dict) -> None:
+    """Create a Document row plus its Chunk rows from a corpus entry.
+
+    Shared by the initial seed and the delta-sync so the two paths cannot
+    drift apart (e.g. if the chunk schema gains a field).
+    """
+    from app.models.knowledge import Chunk
+
+    doc = Document(
+        title=doc_info["title"],
+        doc_type=doc_info["doc_type"],
+        category=doc_info.get("category", "institutional"),
+        description=doc_info.get("description", ""),
+        author=doc_info.get("author", "Vasavi College of Engineering"),
+        total_chunks=len(doc_info["chunks"]),
+    )
+    session.add(doc)
+    await session.flush()  # populate doc.id for the chunk foreign keys
+
+    for idx, chk in enumerate(doc_info["chunks"]):
+        session.add(
+            Chunk(
+                document_id=doc.id,
+                chunk_index=idx + 1,
+                content=chk["text"],
+                page_number=chk.get("page", 1),
+                char_count=len(chk["text"]),
+                tags=chk.get("tags", ""),
+            )
+        )
+
+
+def missing_documents(existing_titles: set[str]) -> list[dict]:
+    """Return corpus entries whose title is not present (idempotent delta).
+
+    Pure helper — testable without a database. Note: dedup is by title only,
+    so content edits to an already-seeded document are not re-propagated.
+    """
+    from app.db.vce_knowledge_data import VCE_DOCUMENTS
+
+    return [d for d in VCE_DOCUMENTS if d["title"] not in existing_titles]
+
+
+async def sync_knowledge_docs() -> None:
+    """Idempotently add any corpus documents missing from the database.
+
+    ``seed_if_empty`` only runs on a fresh database, so new documents added to
+    ``VCE_DOCUMENTS`` later would never reach an already-seeded instance. This
+    delta-syncs by title on every startup (no-op when nothing is missing).
+    """
+    async with async_session_factory() as session:
+        existing_titles = set(
+            (await session.execute(select(Document.title))).scalars().all()
+        )
+        added = 0
+        for doc_info in missing_documents(existing_titles):
+            await _insert_document(session, doc_info)
+            added += 1
+
+        if added:
+            await session.commit()
+            logger.info("knowledge_docs_synced", added=added)

@@ -187,6 +187,71 @@ VCE_DOCUMENTS = [
         ]
     },
     {
+        "title": "VCE Transport & Bus Routes",
+        "doc_type": "Circular",
+        "category": "institutional",
+        "description": "College bus routes, pickup/drop timings, and bus pass application procedure.",
+        "author": "Transport Section, VCE",
+        "total_chunks": 2,
+        "chunks": [
+            {
+                "page": 1,
+                "text": "VCE College Bus Service & Routes: The college operates 12 bus routes covering Secunderabad, Hyderabad, Kukatpally, LB Nagar, Dilsukhnagar, and surrounding areas. Morning pickup runs 7:00 AM - 8:30 AM and evening drops run 4:30 PM - 6:00 PM. Route 7 (Secunderabad) arrives at the college at 7:45 AM. Students must carry their bus pass or student ID for boarding.",
+                "tags": "transport, bus routes, bus timings, college bus, pickup, drop"
+            },
+            {
+                "page": 3,
+                "text": "Bus Pass Application: Student bus passes are issued by the Transport Section at the beginning of each semester. Submit the bus pass application form with a passport photo, a copy of the student ID, and the pass fee at the transport office. Semester passes are valid for the full semester; e-pass QR cards are accepted on all routes.",
+                "tags": "bus pass, transport office, semester pass, e-pass, application"
+            }
+        ]
+    },
+    {
+        "title": "VCE Fee Structure & Payment Guidelines",
+        "doc_type": "Notice",
+        "category": "institutional",
+        "description": "Tuition and hostel fee structure, semester installment schedule, and payment deadlines.",
+        "author": "Accounts Section, VCE",
+        "total_chunks": 2,
+        "chunks": [
+            {
+                "page": 1,
+                "text": "Tuition Fee Structure: Annual B.E. tuition is Rs. 1,10,000 per year (50% of the amount is subsidized for students under government fee reimbursement categories). Fees are payable in two semester installments of Rs. 55,000 each, due before the start of each semester (July 15 for odd semesters and December 15 for even semesters). A late fee of Rs. 500 per month applies after the deadline.",
+                "tags": "tuition fee, fee structure, semester installment, payment deadline, late fee"
+            },
+            {
+                "page": 5,
+                "text": "Hostel & Other Fees: Hostel and mess charges are billed annually at the time of hostel allotment. Hostel fee includes room rent, mess advance, and caution deposit (refundable). ePASS and merit scholarship amounts are adjusted automatically against tuition dues in the fee portal.",
+                "tags": "hostel fee, mess charges, caution deposit, fee payment, scholarships adjustment"
+            }
+        ]
+    },
+    {
+        "title": "VCE College Calendar, Working Days & Class Timings",
+        "doc_type": "Handbook",
+        "category": "institutional",
+        "description": "College working hours, daily class schedule, working days, holidays, and administrative office timings.",
+        "author": "Office of the Principal, VCE",
+        "total_chunks": 3,
+        "chunks": [
+            {
+                "page": 1,
+                "text": "College Working Hours & Daily Class Schedule: Regular academic working hours are 9:00 AM to 4:30 PM, Monday to Saturday. Classes run in 50-minute periods with a 30-minute lunch break: Period 1: 09:00 - 10:00, Period 2: 10:10 - 11:10, Period 3: 11:20 - 12:20, Lunch Break: 12:20 - 1:10 PM, Period 4: 1:10 - 2:00, Period 5: 2:10 - 3:00, Period 6: 3:10 - 4:00. Co-curricular activities and sports are scheduled 4:00 - 4:30 PM.",
+                "tags": "college timings, class schedule, working hours, periods, lunch break, daily routine"
+            },
+            {
+                "page": 3,
+                "text": "Working Days & Holidays: The college works Monday through Saturday. Second Saturday of every month is a holiday. Declared holidays include Republic Day (Jan 26), Independence Day (Aug 15), Gandhi Jayanti (Oct 2), and the VCE Foundation Day. Summer vacation spans 8 weeks from the first week of May. Students must maintain the 75% attendance requirement across the declared working days.",
+                "tags": "working days, holidays, second saturday, summer vacation, academic calendar"
+            },
+            {
+                "page": 7,
+                "text": "Administrative & Campus Office Timings: The administrative office, accounts section, and examination cell are open 9:30 AM - 5:00 PM on working days. The Central Library reading hall is open 8:00 AM - 8:00 PM on working days and 9:00 AM - 1:00 PM on Sundays and holidays. The Principal's office attends to student queries between 3:00 PM - 5:00 PM on working days.",
+                "tags": "office timings, admin office, accounts, examination cell, library hours, principal office"
+            }
+        ]
+    },
+    {
         "title": "Vasavi College Campus Innovation & Research Guidelines",
         "doc_type": "Notice",
         "category": "institutional",

@@ -16,7 +16,10 @@ export default defineConfig({
     server: {
       proxy: {
         "/api": {
-          target: "http://127.0.0.1:5000",
+          // Note: port 5000 is occupied by macOS ControlCenter on this machine,
+          // so the backend (backend/run.py) auto-picks 5050. Keep in sync with
+          // backend/.current_port if it ever changes.
+          target: "http://127.0.0.1:5050",
           changeOrigin: true,
           ws: true,
         },

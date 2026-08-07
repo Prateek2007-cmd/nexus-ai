@@ -6,6 +6,7 @@ mounts routers, and manages startup/shutdown via the lifespan context.
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -29,12 +30,22 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
 
     # Seed demo data
-    from app.db.seed import seed_if_empty
+    from app.db.seed import seed_if_empty, sync_knowledge_docs
     await seed_if_empty()
+    # Delta-sync any corpus documents added after the first seed.
+    await sync_knowledge_docs()
 
     # Initialize agent registry
     from app.agents.registry import initialize_agents
     initialize_agents()
+
+    # Warm the offline RAG index (persistent ChromaDB collection + BM25)
+    # from the seeded knowledge base so first queries hit a populated store.
+    try:
+        from app.rag.pipeline import get_rag_pipeline
+        await get_rag_pipeline().warmup()
+    except Exception as exc:  # pragma: no cover - non-fatal for the app
+        logging.getLogger(__name__).warning("rag_warmup_failed: %s", exc)
 
     yield  # ← Application runs here
 

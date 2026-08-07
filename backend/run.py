@@ -11,8 +11,13 @@ import sys
 import subprocess
 
 # Auto-use virtual environment if available and not already active
-venv_python = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "python.exe")
-if os.path.exists(venv_python) and sys.executable != os.path.abspath(venv_python) and "VIRTUAL_ENV" not in os.environ:
+_venv_dir = os.path.join(os.path.dirname(__file__), "venv")
+_venv_pythons = [
+    os.path.join(_venv_dir, "Scripts", "python.exe"),  # Windows
+    os.path.join(_venv_dir, "bin", "python"),  # macOS / Linux
+]
+venv_python = next((p for p in _venv_pythons if os.path.exists(p)), None)
+if venv_python and sys.executable != os.path.abspath(venv_python) and "VIRTUAL_ENV" not in os.environ:
     os.execv(venv_python, [venv_python] + sys.argv)
 
 import uvicorn

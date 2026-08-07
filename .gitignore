@@ -35,7 +35,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+backend/lib/
 lib64/
 parts/
 sdist/
@@ -54,6 +54,9 @@ backend/campusx.db
 backend/.current_port
 .env
 backend/.env
+
+# RAG / ChromaDB persistent store (generated at runtime)
+backend/data/
 
 # Wrangler / Cloudflare
 .wrangler/

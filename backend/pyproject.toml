@@ -1,3 +1,10 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
 [project]
 name = "campusx-ai-backend"
 version = "1.0.0"
@@ -26,6 +33,9 @@ dependencies = [
     "langchain-google-genai>=2.0.0",
     # RAG
     "chromadb>=0.5.0",
+    # Offline embeddings for Chroma's DefaultEmbeddingFunction (ONNX MiniLM)
+    "onnxruntime>=1.17.0",
+    "tokenizers>=0.15.0",
     "pypdf>=5.0.0",
     # Caching
     "redis>=5.2.0",

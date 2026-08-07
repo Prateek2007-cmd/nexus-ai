@@ -5,6 +5,51 @@ import uuid
 from app.agents.base import BaseAgent
 from app.agents.types import AgentTask, AgentResult, ExecutionPlan, ExecutionStep, VerificationResult
 
+# Terms that mark a query as a knowledge-base (RAG) question — shared by
+# intent detection and the needs_rag fallback so the two lists cannot drift.
+# Scoped to institution-level phrasing: bare "schedule" stays with the
+# calendar agent (the student's personal timetable), not the RAG corpus.
+RAG_TRIGGER_KEYWORDS: list[str] = [
+    "timing",
+    "timings",
+    "hours",
+    "college hours",
+    "working hours",
+    "office hours",
+    "class hours",
+    "college schedule",
+    "college class schedule",
+    "working days",
+    "academic calendar",
+    "holiday",
+    "holidays",
+    "vacation",
+    "summer vacation",
+    "revaluation",
+    "exam pattern",
+    "evaluation pattern",
+    "passing marks",
+    "minimum marks",
+    "tuition fee",
+    "fee structure",
+    "fee payment",
+    "payment deadline",
+    "hostel fee",
+    "overdue",
+    "transport",
+    # NOTE: bare "bus" is intentionally excluded — substring matching would
+    # also hit "busy"/"business". The compound phrases cover real queries.
+    "bus pass",
+    "bus routes",
+    "bus timings",
+    "college bus",
+    "what time",
+    "opening time",
+    "closing time",
+    "opens at",
+    "closes at",
+]
+
 INTENT_AGENT_MAP: dict[str, str] = {
     "academic": "academic",
     "attendance": "academic",
@@ -117,10 +162,17 @@ class PlannerAgent(BaseAgent):
             steps.append(step)
             agent_steps[agent_id] = len(steps) - 1
 
-        policy_keywords = ["policy", "rule", "regulation", "handbook", "guideline", "document", "faq"]
+        policy_keywords = [
+            "policy", "rule", "regulation", "handbook", "guideline", "document",
+            "faq", *RAG_TRIGGER_KEYWORDS,
+        ]
         needs_rag = any(kw in query.lower() for kw in policy_keywords)
 
-        if needs_rag and "knowledge" not in agent_steps and len(steps) > 0:
+        # Insert the RAG step even when no other intent matched (e.g. pure
+        # informational queries like "college timings" or "college rules") so
+        # the orchestrator never degrades to a bare greeting for a knowledge
+        # question.
+        if needs_rag and "knowledge" not in agent_steps:
             steps.insert(0, ExecutionStep(
                 step_id=f"step-rag",
                 agent="knowledge",
@@ -161,7 +213,7 @@ class PlannerAgent(BaseAgent):
             "placement": ["placement", "drive", "company", "internship", "interview", "job", "salary", "stipend", "package", "hiring", "recruit", "tesla", "google", "microsoft", "amazon", "stripe"],
             "academic": ["attendance", "timetable", "course", "class", "exam", "cgpa", "grade", "gpa", "marks", "credits", "subject", "semester", "syllabus"],
             "event": ["event", "workshop", "hackathon", "seminar", "bootcamp", "open lab"],
-            "knowledge": ["policy", "regulation", "handbook", "rule", "guideline", "manual", "document", "faq", "procedure", "book", "textbook", "author", "syllabus", "curriculum", "reference", "algorithms", "clrs", "silberschatz", "kurose", "dragon book"],
+            "knowledge": ["policy", "regulation", "handbook", "rule", "guideline", "manual", "document", "faq", "procedure", "book", "textbook", "author", "syllabus", "curriculum", "reference", "algorithms", "clrs", "silberschatz", "kurose", "dragon book", *RAG_TRIGGER_KEYWORDS],
             "calendar": ["calendar", "schedule", "when", "tomorrow", "today", "slot"],
             "notification": ["remind", "reminder", "notify", "alert"],
             "email": ["email", "draft", "send", "mail"],

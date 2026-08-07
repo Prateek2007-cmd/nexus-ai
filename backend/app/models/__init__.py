@@ -7,6 +7,7 @@ from app.models.academic import Course, Enrollment  # noqa: F401
 from app.models.placement import Company, Drive  # noqa: F401
 from app.models.event import Event, Registration  # noqa: F401
 from app.models.knowledge import Document, Chunk  # noqa: F401
+from app.models.retrieval import RetrievalLog  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
 from app.models.memory import AgentMemory, UserPreference  # noqa: F401
 from app.models.calendar import CalendarBlock  # noqa: F401

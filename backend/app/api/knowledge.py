@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.knowledge import Document, Chunk
+from app.models.retrieval import RetrievalLog
 
 router = APIRouter()
 
@@ -52,7 +53,44 @@ async def search_knowledge(body: SearchQuery) -> dict:
         "sources": result.sources,
         "summary": result.answer,
         "confidence": result.confidence,
+        "metrics": result.metrics,
     }
+
+
+@router.get("/logs")
+async def retrieval_logs(
+    limit: int = 20,
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Return recent persisted retrieval metrics (query, hits, top docs)."""
+    result = await db.execute(
+        select(RetrievalLog)
+        .order_by(RetrievalLog.created_at.desc())
+        .limit(max(1, min(limit, 100)))
+    )
+    logs = result.scalars().all()
+    return [
+        {
+            "id": log.id,
+            "query": log.query,
+            "dense_hits": log.dense_hits,
+            "bm25_hits": log.bm25_hits,
+            "fused_hits": log.fused_hits,
+            "has_intersection": log.has_intersection,
+            "reranked": log.reranked,
+            "confidence": log.confidence,
+            "top_docs": log.top_docs,
+            "sources": log.sources,
+            # SQLite stores timestamps as naive UTC — mark them so the browser
+            # parses them as UTC instead of local time.
+            "created_at": (
+                log.created_at.isoformat() + "Z"
+                if log.created_at and log.created_at.tzinfo is None
+                else (log.created_at.isoformat() if log.created_at else None)
+            ),
+        }
+        for log in logs
+    ]
 
 
 @router.get("/documents/{doc_id}")
