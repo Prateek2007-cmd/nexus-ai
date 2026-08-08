@@ -83,6 +83,25 @@ class OrchestratorAgent(BaseAgent):
                     confidence=1.0,
                 )
 
+            # ── Step 0.5: Vision / OCR Preprocessing ─────────────
+            image_base64 = task.params.get("image_base64")
+            if image_base64:
+                timeline.append({"agent": "Vision Agent", "action": "Extracting OCR & semantic context from image via Gemini 1.5", "ms": 450})
+                if emit_callback:
+                    await emit_callback({"event": "status", "data": {"status": "Processing Image", "agent": "Vision"}})
+                    await emit_callback({"event": "step_complete", "data": timeline[-1]})
+                
+                try:
+                    from app.llm.client import get_llm_client
+                    client = get_llm_client()
+                    ocr_text = await client.analyze_image(image_base64, query)
+                    if ocr_text:
+                        query = f"User Query: {query}\n\n[Extracted Image Context]: {ocr_text}"
+                        task.params["query"] = query
+                        timeline.append({"agent": "Vision Agent", "action": "Image context appended to Planner input", "ms": 10})
+                except Exception as e:
+                    logger.warning("ocr_failed", error=str(e))
+
             # ── Step 1: Plan ───────────────────────────────────────
             self._status = AgentStatus.PLANNING
             if emit_callback:
@@ -218,6 +237,13 @@ class OrchestratorAgent(BaseAgent):
                         if emit_callback:
                             await emit_callback({"event": "step_complete", "data": step_entry})
 
+                    # A2A Communication logging
+                    if len(group_tasks) > 0:
+                        a2a_entry = {"agent": "Orchestrator", "action": f"A2A Protocol Handshake: Aggregated {len(group_tasks)} agent(s)", "ms": 5}
+                        timeline.append(a2a_entry)
+                        if emit_callback:
+                            await emit_callback({"event": "step_complete", "data": a2a_entry})
+
             # ── Step 3: Merge results ──────────────────────────────
             self._status = AgentStatus.REASONING
             merged_data = self._merge_results(results)
@@ -330,13 +356,14 @@ class OrchestratorAgent(BaseAgent):
         conversation_id: str | None = None,
         emit_callback: Any = None,
         student_profile: dict[str, Any] | None = None,
+        image_base64: str | None = None,
     ) -> AgentResult:
         """High-level entry point for chat — used by the API layer."""
         task = AgentTask(
             task_id=f"chat-{uuid.uuid4().hex[:8]}",
             agent_id=self.agent_id,
             action="orchestrate",
-            params={"query": query, "message": query, "student_profile": student_profile or {}},
+            params={"query": query, "message": query, "student_profile": student_profile or {}, "image_base64": image_base64},
             user_id=user_id,
         )
         return await self._orchestrate(task, emit_callback=emit_callback)

@@ -17,6 +17,7 @@ export type StudentProfile = {
   attendance: number;
   phone: string;
   hostel: string;
+  language: string;
   skills: string[];
   resumeScore?: number;
   resumeTips?: string[];
@@ -35,6 +36,7 @@ const DEFAULT_STUDENT: StudentProfile = {
   attendance: 85,
   phone: "+91 98xxx xx421",
   hostel: "Block C · Room 214",
+  language: "English",
   skills: ["Python", "React", "FastAPI", "Machine Learning", "Git", "SQL"],
 };
 

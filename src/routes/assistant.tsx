@@ -20,6 +20,10 @@ import {
   XCircle,
   Layers,
   Eye,
+  Globe,
+  Camera,
+  Volume2,
+  Image as ImageIcon
 } from "lucide-react";
 
 export const Route = createFileRoute("/assistant")({
@@ -36,7 +40,7 @@ export const Route = createFileRoute("/assistant")({
   component: Assistant,
 });
 
-type Msg = { id: string; role: "user" | "assistant"; text: string };
+type Msg = { id: string; role: "user" | "assistant"; text: string; confidence?: number; sources?: string[]; image?: string };
 
 interface HITLInterrupt {
   thread_id: string;
@@ -121,6 +125,12 @@ function Assistant() {
   const [routePreviewOpen, setRoutePreviewOpen] = useState(false);
   const [activeQuery, setActiveQuery] = useState("");
 
+  // Advanced AI Features State
+  const [language, setLanguage] = useState(getStudent().language || "English");
+  const [isListening, setIsListening] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -131,6 +141,9 @@ function Assistant() {
     if (!text.trim() || running) return;
 
     const userMsg: Msg = { id: crypto.randomUUID(), role: "user", text };
+    if (imagePreview) {
+      userMsg.image = imagePreview;
+    }
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setRunning(true);
@@ -139,12 +152,18 @@ function Assistant() {
     setLiveSources([]);
     setAgentsUsed([]);
     setHitlInterrupt(null);
+    const sentImage = imagePreview;
+    setImagePreview(null); // clear image after sending
 
     try {
       const res = await fetch("/api/chat/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, student_profile: getStudent() }),
+        body: JSON.stringify({ 
+          message: text, 
+          student_profile: { ...getStudent(), language },
+          image_base64: sentImage 
+        }),
       });
 
       const data = await res.json();
@@ -197,7 +216,13 @@ function Assistant() {
 
       setMessages((m) => [
         ...m,
-        { id: crypto.randomUUID(), role: "assistant", text: responseText },
+        { 
+          id: crypto.randomUUID(), 
+          role: "assistant", 
+          text: responseText,
+          confidence: data.confidence,
+          sources: data.sources 
+        },
       ]);
     } catch (err) {
       const student = getStudent();
@@ -209,6 +234,43 @@ function Assistant() {
     } finally {
       setRunning(false);
     }
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => setImagePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) return;
+    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRec) {
+      alert("Speech recognition is not supported in this browser.");
+      return;
+    }
+    const recognition = new SpeechRec();
+    recognition.lang = language === "Spanish" ? "es-ES" : language === "Hindi" ? "hi-IN" : "en-US";
+    recognition.onstart = () => setIsListening(true);
+    recognition.onresult = (e: any) => {
+      setInput(e.results[0][0].transcript);
+      setIsListening(false);
+    };
+    recognition.onerror = () => setIsListening(false);
+    recognition.onend = () => setIsListening(false);
+    recognition.start();
+  };
+
+  const speakText = (text: string) => {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/[*_#|]/g, ""); // strip simple markdown for speech
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.lang = language === "Spanish" ? "es-ES" : language === "Hindi" ? "hi-IN" : "en-US";
+    window.speechSynthesis.speak(utterance);
   };
 
   const handleHITLDecision = async (approved: boolean) => {
@@ -269,6 +331,20 @@ function Assistant() {
 
   return (
     <AppShell title="CampusX Assistant" subtitle="Orchestrated multi-agent conversation">
+      <div className="mb-4 flex items-center justify-end gap-3 px-1">
+        <Globe className="h-4 w-4 text-muted-foreground" />
+        <select 
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-foreground outline-none"
+        >
+          <option value="English">English</option>
+          <option value="Spanish">Español</option>
+          <option value="French">Français</option>
+          <option value="Hindi">हिंदी (Hindi)</option>
+        </select>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="flex min-h-[70vh] flex-col overflow-hidden rounded-2xl glass">
           <div className="flex-1 space-y-6 overflow-y-auto p-5">
@@ -313,33 +389,59 @@ function Assistant() {
                     <Bot className="h-3.5 w-3.5 text-primary" />
                   </span>
                 )}
-                <div
-                  className={
-                    m.role === "user"
-                      ? "max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground"
-                      : "max-w-[80%] text-sm"
-                  }
-                >
-                  {m.role === "assistant" ? (
-                    <div>
-                      <Markdown text={m.text} />
-                      <div className="mt-3 flex items-center gap-2 border-t border-border/40 pt-2">
-                        <button
-                          onClick={() => {
-                            const userQuery = messages.slice(0, idx).reverse().find((p) => p.role === "user")?.text || activeQuery || "Query";
-                            setActiveQuery(userQuery);
-                            setRoutePreviewOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan/40 bg-cyan/10 px-2.5 py-1 font-mono text-[11px] text-cyan hover:bg-cyan/20 transition-all"
-                        >
-                          <Layers className="h-3 w-3" /> Preview Agent Route & Flow
-                        </button>
+                  <div
+                    className={
+                      m.role === "user"
+                        ? "max-w-[80%] rounded-2xl bg-primary px-4 py-2.5 text-sm text-primary-foreground"
+                        : "max-w-[80%] text-sm"
+                    }
+                  >
+                    {m.image && (
+                      <img src={m.image} alt="User Upload" className="mb-2 max-w-sm rounded-lg border border-primary/40 shadow-sm" />
+                    )}
+                    {m.role === "assistant" ? (
+                      <div>
+                        <Markdown text={m.text} />
+                        
+                        {/* Explainable AI (XAI) Footer */}
+                        <div className="mt-4 flex flex-col gap-2 border-t border-border/40 pt-3">
+                          <div className="flex items-center gap-2">
+                            {m.confidence !== undefined && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border">
+                                <CheckCircle2 className="h-3 w-3 text-cyan" /> {(m.confidence * 100).toFixed(0)}% Confident
+                              </span>
+                            )}
+                            <button
+                              onClick={() => speakText(m.text)}
+                              className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border hover:bg-muted"
+                            >
+                              <Volume2 className="h-3 w-3" /> Read Aloud
+                            </button>
+                            <button
+                              onClick={() => {
+                                const userQuery = messages.slice(0, idx).reverse().find((p) => p.role === "user")?.text || activeQuery || "Query";
+                                setActiveQuery(userQuery);
+                                setRoutePreviewOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-full bg-cyan/10 px-2 py-0.5 font-mono text-[10px] text-cyan ring-1 ring-cyan/40 hover:bg-cyan/20 transition-all"
+                            >
+                              <Layers className="h-3 w-3" /> Preview Route
+                            </button>
+                          </div>
+                          
+                          {/* Provenance Citations */}
+                          {m.sources && m.sources.length > 0 && (
+                            <div className="mt-1 text-[10px] leading-tight text-muted-foreground">
+                              <span className="font-semibold text-foreground/70">Provenance: </span> 
+                              {m.sources.join(" • ")}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    m.text
-                  )}
-                </div>
+                    ) : (
+                      m.text
+                    )}
+                  </div>
                 {m.role === "user" && (
                   <span className="ml-3 mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-border bg-surface">
                     <User className="h-3.5 w-3.5" />
@@ -439,16 +541,26 @@ function Assistant() {
                 placeholder="Ask the orchestrator anything about campus…"
                 className="relative w-full resize-none bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
               />
-              <div className="relative flex items-center justify-between px-2 pb-1">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <button type="button" aria-label="Attach file" className="rounded-lg p-1.5 transition-colors hover:bg-accent hover:text-foreground">
-                    <Paperclip className="h-4 w-4" />
-                  </button>
-                  <button type="button" aria-label="Voice input" className="rounded-lg p-1.5 transition-colors hover:bg-accent hover:text-foreground">
-                    <Mic className="h-4 w-4" />
-                  </button>
-                  <span className="font-mono text-[10px] uppercase tracking-[0.18em]">8 agents ready</span>
-                </div>
+              <div className="relative flex flex-col px-2 pb-1">
+                {imagePreview && (
+                  <div className="mb-2 relative w-16 h-16">
+                    <img src={imagePreview} alt="Preview" className="h-full w-full object-cover rounded-lg border border-border" />
+                    <button type="button" onClick={() => setImagePreview(null)} className="absolute -top-1.5 -right-1.5 bg-background rounded-full border border-border">
+                      <XCircle className="h-4 w-4 text-rose-400" />
+                    </button>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                    <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Attach file" className="rounded-lg p-1.5 transition-colors hover:bg-accent hover:text-foreground">
+                      {imagePreview ? <ImageIcon className="h-4 w-4 text-cyan" /> : <Camera className="h-4 w-4" />}
+                    </button>
+                    <button type="button" onClick={toggleListening} aria-label="Voice input" className={`rounded-lg p-1.5 transition-colors ${isListening ? 'animate-pulse text-rose-400 bg-rose-400/10' : 'hover:bg-accent hover:text-foreground'}`}>
+                      <Mic className="h-4 w-4" />
+                    </button>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.18em]">8 agents ready</span>
+                  </div>
                 {running ? (
                   <GlowButton
                     type="button"
@@ -463,6 +575,7 @@ function Assistant() {
                     <ArrowUp className="h-4 w-4" />
                   </GlowButton>
                 )}
+                </div>
               </div>
             </form>
           </div>

@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str | None = None
     student_profile: dict[str, Any] | None = None
+    image_base64: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -53,6 +54,7 @@ async def send_message(body: ChatRequest) -> ChatResponse:
             user_id=user_id,
             conversation_id=body.conversation_id,
             student_profile=body.student_profile,
+            image_base64=body.image_base64,
         )
 
         elapsed_ms = round((time.monotonic() - start) * 1000)

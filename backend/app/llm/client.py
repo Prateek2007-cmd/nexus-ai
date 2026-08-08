@@ -124,12 +124,16 @@ class LLMClient:
 
         context = "\n".join(context_parts)
 
+        lang_pref = profile.get("language") or "English"
+
         system_prompt = f"""You are CampusX AI, the friendly, intelligent multi-agent campus assistant.
 Answer the student's question accurately, naturally, and warmly using the student profile and agent data provided.
 The active student asking is {st_name} (Roll: {st_roll}, CGPA: {st_cgpa}, Branch: {st_dept}, Attendance: {st_att}%).
 Always use the exact dynamic student profile values from the context.
 If the student is engaging in casual chat, reply warmly and naturally without rigid grounded document tags.
-Format your answer with markdown bolding, bullet points, and markdown tables where appropriate. Be natural, helpful, and concise."""
+Format your answer with markdown bolding, bullet points, and markdown tables where appropriate. Be natural, helpful, and concise.
+
+CRITICAL INSTRUCTION: You must output your final response exclusively in the {lang_pref} language. Do not mix languages."""
 
         prompt = f"""Student question: "{query}"
 
@@ -235,6 +239,44 @@ Output ONLY a comma-separated list of domains."""
         if res:
             return [d.strip().lower() for d in res.split(",") if d.strip()]
         return ["chat"]
+
+    async def analyze_image(self, base64_data: str, user_prompt: str) -> str:
+        """Use Google Gemini 1.5 Flash for Multimodal Vision OCR and Scene Understanding."""
+        gemini_key = os.getenv("GOOGLE_API_KEY")
+        if not gemini_key:
+            return "Vision capability offline (Google API key not found)."
+
+        # Parse data URI (e.g., data:image/png;base64,iVBORw0...)
+        mime_type = "image/jpeg"
+        data_b64 = base64_data
+        if "," in base64_data:
+            header, data_b64 = base64_data.split(",", 1)
+            if ":" in header and ";" in header:
+                mime_type = header.split(":")[1].split(";")[0]
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": f"Extract any legible text (OCR) from this image and describe it briefly. Relate it to this query: {user_prompt}"},
+                    {"inline_data": {"mime_type": mime_type, "data": data_b64}}
+                ]
+            }]
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                else:
+                    logger.warning("gemini_vision_failed", status=resp.status_code, text=resp.text[:200])
+        except Exception as e:
+            logger.error("gemini_vision_error", error=str(e))
+        
+        return ""
 
 
 _client: LLMClient | None = None
