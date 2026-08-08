@@ -128,3 +128,23 @@ async def test_pure_greeting_control_still_greets() -> None:
     """Guard against over-fixing: actual greetings must keep the greeting."""
     plan = await PlannerAgent().plan(_task("hi"))
     assert plan.steps == []
+
+
+# Queries whose *facts* (fee amount, makeup policy, curfew time) live only in
+# the RAG corpus — the Knowledge Agent must be in the plan or the answer is a
+# status summary without the fact.
+KNOWLEDGE_FACT_QUERIES: list[str] = [
+    "how much are the B.E. fees",
+    "makeup exam",
+    "hostel curfew",
+]
+
+
+@pytest.mark.parametrize("query", KNOWLEDGE_FACT_QUERIES)
+async def test_fact_queries_plan_a_knowledge_step(query: str) -> None:
+    plan = await PlannerAgent().plan(_task(query))
+    agents = [step.agent for step in plan.steps]
+    assert "knowledge" in agents, (
+        f"{query!r} must route to the Knowledge Agent so the answer carries "
+        "the grounded fee/makeup/curfew fact, not just a status summary"
+    )

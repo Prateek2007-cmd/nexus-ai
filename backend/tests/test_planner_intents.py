@@ -118,8 +118,10 @@ async def test_revaluation_question_routes_to_knowledge():
 async def test_fee_queries_route_to_knowledge():
     for query in [
         "what is the tuition fee structure",
+        "how much are the B.E. fees",
         "fee payment deadline",
         "hostel fees",
+        "what are the college fees",
     ]:
         plan = await _plan(query)
         assert "knowledge" in _step_agents(plan), f"{query!r} should route to knowledge"
@@ -136,6 +138,18 @@ async def test_open_close_time_phrasings_route_to_knowledge():
         "college opening time",
         "what time does the office close",
         "library opening time",
+    ]:
+        plan = await _plan(query)
+        assert "knowledge" in _step_agents(plan), f"{query!r} should route to knowledge"
+
+
+async def test_makeup_curfew_queries_route_to_knowledge():
+    for query in [
+        "makeup exam",
+        "makeup examination",
+        "when is the makeup exam",
+        "hostel curfew",
+        "what is the curfew time",
     ]:
         plan = await _plan(query)
         assert "knowledge" in _step_agents(plan), f"{query!r} should route to knowledge"

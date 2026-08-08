@@ -60,6 +60,48 @@ class RAGResult:
     metrics: dict[str, Any] = field(default_factory=dict)
 
 
+def regulation_first(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Prefer regulation-type chunks over reference textbooks for citations.
+
+    Hybrid fusion interleaves reference-textbook chunks (``doc_type`` "Book")
+    with college regulations, so a query like "library rules" can rank a
+    textbook page above the actual library policy. This keeps citations
+    on-topic by preferring Handbook/Policy/Circular/Notice/FAQ chunks while
+    preserving the relative fused order *inside* each group.
+
+    Guard: if the *best-matching* chunk is itself a textbook, the query is a
+    CS-concept question (e.g. "what is a semaphore") — the fused order is kept
+    unchanged so the textbook evidence stays citable and incidental regulation
+    chunks (curriculum/library pages) can't displace it.
+    """
+    if not chunks:
+        return chunks
+    if (chunks[0].get("type") or "").lower() == "book":
+        return chunks
+    regulations = [c for c in chunks if (c.get("type") or "").lower() != "book"]
+    textbooks = [c for c in chunks if (c.get("type") or "").lower() == "book"]
+    return regulations + textbooks
+
+
+def citation_picks(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pick up to 3 on-topic citation chunks for the synthesizer.
+
+    Regulation-type chunks (Handbook/Policy/Circular/Notice/FAQ) are cited
+    before reference textbooks; if the best-matching chunk is itself a
+    textbook the query is a concept question and the fused order is kept so
+    the textbook evidence is cited. When regulation chunks exist they fill the
+    citation slots first — a textbook is never squeezed into a slot just to
+    reach three entries (e.g. "transport bus routes" cites only its two bus
+    policy chunks rather than padding with a networking textbook page).
+    """
+    if not chunks:
+        return []
+    if (chunks[0].get("type") or "").lower() == "book":
+        return chunks[:3]
+    regulations = [c for c in chunks if (c.get("type") or "").lower() != "book"]
+    return regulations[:3]
+
+
 class RAGPipeline:
     """Hybrid dense + sparse retrieval pipeline backed by offline ChromaDB."""
 
@@ -520,12 +562,23 @@ class RAGPipeline:
                 metrics=metrics,
             )
 
-        sources_set: set[str] = set()
-        for c in chunks:
-            sources_set.add(f"{c['doc']} · p.{c['page']}")
-        final_sources = sorted(sources_set)
+        # The answer's quoted evidence prefers regulation-type documents over
+        # reference textbooks when both are in the retrieved set, so it stays
+        # on-topic. The `chunks` returned above keep the true fused order for
+        # retrieval transparency (frontend scores / retrieval logs).
+        context_chunks = regulation_first(chunks)
+        context = "\n\n".join(
+            f"[{c['doc']} · p.{c['page']}] {c['text']}" for c in context_chunks
+        )
 
-        context = "\n\n".join(f"[{c['doc']} · p.{c['page']}] {c['text']}" for c in chunks)
+        # Sources listed in evidence (regulation-first) order so the answer's
+        # header matches the quoted chunks; dedup keeps one entry per source.
+        final_sources: list[str] = []
+        for c in context_chunks:
+            label = f"{c['doc']} · p.{c['page']}"
+            if label not in final_sources:
+                final_sources.append(label)
+
         answer = await self._generate_answer(normalized, context, final_sources)
 
         # Confidence from the fused top score (0.4 baseline → 0.98 cap).

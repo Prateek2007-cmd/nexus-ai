@@ -7,6 +7,8 @@ import os
 from typing import Any
 import httpx
 
+from app.rag.pipeline import citation_picks
+
 logger = logging.getLogger(__name__)
 
 GROQ_MODELS = [
@@ -184,8 +186,13 @@ Provide a personalized dynamic response based strictly on the facts above."""
                         sections.append(f"**Placement & Internship Drives:**\n\n{table}")
 
                 if agent_id == "knowledge" and "chunks" in data and isinstance(data["chunks"], list) and data["chunks"]:
+                    # Prefer regulation-type docs (handbooks/policies/circulars)
+                    # over reference textbooks so citations stay on-topic — e.g.
+                    # no textbook pages for a "library rules" query. Concept
+                    # questions (best match is a textbook) keep the fused order.
+                    citation_chunks = citation_picks(data["chunks"])
                     chunk_list = []
-                    for c in data["chunks"][:3]:
+                    for c in citation_chunks:
                         doc_title = c.get("doc") or (c.get("metadata", {}).get("document_id") if isinstance(c.get("metadata"), dict) else "Campus Policy")
                         snippet = c.get("text") or c.get("content") or ""
                         if snippet:
